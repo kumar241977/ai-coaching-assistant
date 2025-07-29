@@ -1,18 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Coaching Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-brain"></i>
+                    <h1>AI Coach</h1>
+                </div>
+                <div class="session-info">
+                    <span id="session-status">Ready to start</span>
+                    <button id="new-session-btn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> New Session
+                    </button>
+                </div>
+            </div>
+        </header>
 
-AI Coach
-Ready to start  New Session
-Welcome to Your Personal Coaching Assistant
-I'm here to support you through structured coaching conversations using proven ICF methodologies. Together, we can explore your challenges and create actionable plans for growth.
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Welcome Screen -->
+            <div id="welcome-screen" class="welcome-screen">
+                <div class="welcome-content">
+                    <div class="welcome-icon">
+                        <i class="fas fa-handshake"></i>
+                    </div>
+                    <h2>Welcome to Your Personal Coaching Assistant</h2>
+                    <p>I'm here to support you through structured coaching conversations using proven ICF methodologies. Together, we can explore your challenges and create actionable plans for growth.</p>
+                    
+                    <div class="coaching-topics">
+                        <h3>What would you like to work on today?</h3>
+                        <div class="topic-grid">
+                            <div class="topic-card" data-topic="performance_improvement">
+                                <i class="fas fa-chart-line"></i>
+                                <h4>Performance Improvement</h4>
+                                <p>Enhance your work performance and productivity</p>
+                            </div>
+                            <div class="topic-card" data-topic="career_development">
+                                <i class="fas fa-ladder"></i>
+                                <h4>Career Development</h4>
+                                <p>Plan and advance your career growth</p>
+                            </div>
+                            <div class="topic-card" data-topic="work_life_balance">
+                                <i class="fas fa-balance-scale"></i>
+                                <h4>Work-Life Balance</h4>
+                                <p>Achieve harmony between professional and personal life</p>
+                            </div>
+                            <div class="topic-card" data-topic="leadership_growth">
+                                <i class="fas fa-users"></i>
+                                <h4>Leadership Growth</h4>
+                                <p>Develop your leadership skills and effectiveness</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-What would you like to work on today?
-Performance Improvement
-Enhance your work performance and productivity
+            <!-- Chat Interface -->
+            <div id="chat-interface" class="chat-interface" style="display: none;">
+                <!-- Stage Progress -->
+                <div class="stage-progress">
+                    <div class="stage active" data-stage="intake">
+                        <i class="fas fa-door-open"></i>
+                        <span>Intake</span>
+                    </div>
+                    <div class="stage" data-stage="exploration">
+                        <i class="fas fa-search"></i>
+                        <span>Exploration</span>
+                    </div>
+                    <div class="stage" data-stage="reflection">
+                        <i class="fas fa-lightbulb"></i>
+                        <span>Reflection</span>
+                    </div>
+                    <div class="stage" data-stage="action_planning">
+                        <i class="fas fa-tasks"></i>
+                        <span>Action Planning</span>
+                    </div>
+                    <div class="stage" data-stage="follow_up">
+                        <i class="fas fa-check"></i>
+                        <span>Follow-up</span>
+                    </div>
+                </div>
 
-Career Development
-Plan and advance your career growth
+                <!-- Chat Messages -->
+                <div class="chat-container">
+                    <div id="chat-messages" class="chat-messages"></div>
+                </div>
 
-Work-Life Balance
-Achieve harmony between professional and personal life
+                <!-- Input Area -->
+                <div class="input-area">
+                    <div class="input-container">
+                        <textarea id="user-input" 
+                                placeholder="Share your thoughts, challenges, or questions..." 
+                                maxlength="1000"></textarea>
+                        <button id="send-btn" class="send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="character-count">
+                        <span id="char-count">0</span>/1000
+                    </div>
+                </div>
+            </div>
 
-Leadership Growth
-Develop your leadership skills and effectiveness
+            <!-- Action Planning Form -->
+            <div id="action-form" class="action-form" style="display: none;">
+                <div class="form-content">
+                    <h2><i class="fas fa-tasks"></i> Create Your Action Plan</h2>
+                    <p>Let's turn your insights into concrete actions. Fill out the details below:</p>
+                    
+                    <form id="action-commitment-form">
+                        <div class="form-group">
+                            <label for="action-input">What specific action will you take?</label>
+                            <textarea id="action-input" required 
+                                    placeholder="Describe the specific action you will take..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="deadline-input">By when will you complete this?</label>
+                            <input type="date" id="deadline-input" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="success-criteria">How will you know you've succeeded?</label>
+                            <textarea id="success-criteria" 
+                                    placeholder="Define what success looks like..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="obstacles">What obstacles might you face?</label>
+                            <textarea id="obstacles" 
+                                    placeholder="Identify potential challenges..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="support-needed">What support do you need?</label>
+                            <textarea id="support-needed" 
+                                    placeholder="What help or resources would be useful..."></textarea>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" id="back-to-chat" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Chat
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check"></i> Commit to Action
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Spinner -->
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Thinking...</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // Initialize the coaching assistant
+        const coachingAssistant = new CoachingAssistant();
+    </script>
+</body>
+</html>
