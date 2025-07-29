@@ -22,9 +22,6 @@ conversation_engine = ConversationFlowEngine()
 tone_analyzer = EmotionalToneAnalyzer()
 personalization_engine = PersonalizationEngine()
 
-# Initialize database (moved here for deployment)
-init_db()
-
 def detect_topic_from_message(user_message: str) -> str:
     """Intelligently detect coaching topic from natural language input"""
     message_lower = user_message.lower()
@@ -100,6 +97,9 @@ def init_db():
     
     conn.commit()
     conn.close()
+
+# Initialize database immediately after definition
+init_db()
 
 @app.route('/')
 def index():
