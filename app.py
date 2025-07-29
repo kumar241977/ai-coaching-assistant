@@ -7,6 +7,11 @@ from conversation_flow import ConversationFlowEngine, ConversationStage
 from nlp_personalization import EmotionalToneAnalyzer, PersonalizationEngine
 import sqlite3
 import json
+import openai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'coaching-assistant-secret-key-2024')
@@ -16,6 +21,51 @@ CORS(app)
 conversation_engine = ConversationFlowEngine()
 tone_analyzer = EmotionalToneAnalyzer()
 personalization_engine = PersonalizationEngine()
+
+def detect_topic_from_message(user_message: str) -> str:
+    """Intelligently detect coaching topic from natural language input"""
+    message_lower = user_message.lower()
+    
+    # Topic detection patterns
+    topic_patterns = {
+        'performance_improvement': [
+            'performance', 'improve performance', 'productivity', 'work better', 
+            'do better at work', 'improve at work', 'work performance', 'effectiveness',
+            'procrastination', 'procrastinate', 'getting things done', 'efficiency'
+        ],
+        'career_development': [
+            'career', 'promotion', 'job', 'advance career', 'career growth',
+            'next level', 'professional development', 'career path', 'leadership role'
+        ],
+        'work_life_balance': [
+            'balance', 'work life balance', 'work-life', 'overwhelmed', 'stressed',
+            'burnout', 'too much work', 'personal time', 'family time'
+        ],
+        'leadership_growth': [
+            'leadership', 'lead', 'manage', 'team', 'leading people',
+            'manager', 'influence', 'inspire', 'leadership skills'
+        ]
+    }
+    
+    # Check for direct topic mentions first
+    for topic_key, patterns in topic_patterns.items():
+        for pattern in patterns:
+            if pattern in message_lower:
+                return topic_key
+    
+    # Check for common phrases that indicate topic preference
+    if any(phrase in message_lower for phrase in ['work on', 'focus on', 'improve', 'help with']):
+        # If they mention working on something performance-related
+        if any(word in message_lower for word in ['performance', 'productivity', 'procrastination', 'efficiency']):
+            return 'performance_improvement'
+        elif any(word in message_lower for word in ['career', 'job', 'promotion']):
+            return 'career_development'
+        elif any(word in message_lower for word in ['balance', 'stress', 'overwhelm']):
+            return 'work_life_balance'
+        elif any(word in message_lower for word in ['leadership', 'leading', 'manage']):
+            return 'leadership_growth'
+    
+    return None  # No topic detected
 
 # Database setup
 def init_db():
@@ -101,22 +151,47 @@ def send_message():
     else:
         # Regular conversation flow
         if state.current_stage == ConversationStage.INTAKE:
-            response = conversation_engine.generate_intake_response(state)
+            # Intelligent topic detection from natural language
+            detected_topic = detect_topic_from_message(user_message)
+            if detected_topic:
+                print(f"🎯 Detected topic: {detected_topic} from message: '{user_message}'")
+                response = conversation_engine.process_topic_selection(state, detected_topic)
+            else:
+                response = conversation_engine.generate_intake_response(state)
         elif state.current_stage == ConversationStage.EXPLORATION:
             response = conversation_engine.generate_exploration_response(state, user_message)
         elif state.current_stage == ConversationStage.REFLECTION:
             response = conversation_engine.generate_reflection_response(state, user_message)
         elif state.current_stage == ConversationStage.ACTION_PLANNING:
             response = conversation_engine.generate_action_planning_response(state, user_message)
+        elif state.current_stage == ConversationStage.FOLLOW_UP:
+            response = conversation_engine.generate_follow_up_response(state, user_message)
         else:
             response = {'error': 'Invalid conversation stage'}
     
-    # Personalize response based on emotional tone and user preferences
-    if 'error' not in response:
-        personalized_response = personalization_engine.personalize_response(
-            response, emotional_analysis, state.user_id
-        )
-        response.update(personalized_response)
+    # Check if AI suggests stage transition and update accordingly
+    if 'error' not in response and 'suggested_next_stage' in response:
+        suggested_stage = response['suggested_next_stage']
+        try:
+            # Convert string to enum and update state if different
+            new_stage = ConversationStage(suggested_stage)
+            if new_stage != state.current_stage:
+                print(f"🔄 Stage transition: {state.current_stage.value} → {new_stage.value}")
+                state.current_stage = new_stage
+                state.updated_at = datetime.now()
+                # Update the response to reflect the new stage
+                response['stage'] = new_stage.value
+        except ValueError:
+            # Invalid stage suggestion, keep current stage
+            print(f"⚠️ Invalid stage suggestion: {suggested_stage}")
+            pass
+    
+    # Skip personalization for now to avoid question interference
+    # if 'error' not in response:
+    #     personalized_response = personalization_engine.personalize_response(
+    #         response, emotional_analysis, state.user_id
+    #     )
+    #     response.update(personalized_response)
     
     # Save updated session
     save_session_to_db(state)
@@ -227,4 +302,5 @@ def internal_error(error):
 if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)

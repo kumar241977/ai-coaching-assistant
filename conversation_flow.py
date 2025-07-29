@@ -4,6 +4,7 @@ from enum import Enum
 import json
 from datetime import datetime
 from icf_competencies import ICFCompetencyFramework, ICFCompetency
+from openai_coaching import OpenAICoachingEngine, CoachingContext
 
 class ConversationStage(Enum):
     INTAKE = "intake"
@@ -36,6 +37,7 @@ class ConversationFlowEngine:
         self.icf_framework = ICFCompetencyFramework()
         self.coaching_topics = self._initialize_coaching_topics()
         self.sessions = {}  # In-memory storage, replace with database in production
+        self.openai_coach = OpenAICoachingEngine()  # Initialize OpenAI coaching engine
     
     def _initialize_coaching_topics(self) -> Dict[str, CoachingTopic]:
         return {
@@ -89,6 +91,9 @@ class ConversationFlowEngine:
         if session_id is None:
             session_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
+        # Reset conversation state for fresh start
+        self.openai_coach.reset_conversation_state()
+        
         state = ConversationState(
             user_id=user_id,
             session_id=session_id,
@@ -133,18 +138,28 @@ class ConversationFlowEngine:
         state.current_stage = ConversationStage.EXPLORATION
         state.updated_at = datetime.now()
         
-        competency = self.icf_framework.get_competency_response(ICFCompetency.ACTIVE_LISTENING)
+        competency = self.icf_framework.get_competency_response(ICFCompetency.ESTABLISHING_TRUST)
+        
+        # Create a more appropriate initial message for topic selection
+        topic_messages = {
+            "performance_improvement": f"Excellent choice! Let's explore {state.topic.name} together. I'm here to support you in discovering what's working well and what you'd like to enhance. This is a safe space to share your experiences openly.",
+            "career_development": f"Great! {state.topic.name} is such an important area. I'm excited to explore your career aspirations and help you identify the next steps in your professional journey.",
+            "work_life_balance": f"Thank you for choosing to work on {state.topic.name}. Finding harmony between different aspects of life is crucial for well-being. Let's explore what balance means to you.",
+            "leadership_growth": f"Wonderful! {state.topic.name} is a powerful area for development. I'm here to support you in discovering your authentic leadership style and expanding your influence."
+        }
+        
+        initial_message = topic_messages.get(topic_key, f"Great! Let's explore {state.topic.name} together. I'm here to support you through this coaching conversation.")
         
         return {
-            "message": f"Great, let's explore {state.topic.name}. {competency.response_template}",
+            "message": initial_message,
             "questions": state.topic.initial_questions,
-            "stage": "exploration",
+            "stage": "exploration", 
             "competency_applied": competency.competency.value,
             "topic": state.topic.name
         }
     
     def generate_exploration_response(self, state: ConversationState, user_input: str) -> Dict[str, Any]:
-        """Generate response for exploration stage using active listening and powerful questioning"""
+        """Generate response for exploration stage using OpenAI intelligent coaching"""
         # Add user input to conversation history
         self._add_to_history(state, "user", user_input)
         
@@ -152,56 +167,129 @@ class ConversationFlowEngine:
         conversation_depth = len([msg for msg in state.conversation_history if msg["role"] == "user"])
         
         if conversation_depth <= 2:
-            competency = self.icf_framework.get_competency_response(ICFCompetency.ACTIVE_LISTENING)
-            response_type = "clarification"
+            icf_competency = "active_listening"
         else:
-            competency = self.icf_framework.get_competency_response(ICFCompetency.POWERFUL_QUESTIONING)
-            response_type = "deeper_exploration"
+            icf_competency = "powerful_questioning"
+        
+        # Create coaching context for OpenAI
+        coaching_context = CoachingContext(
+            topic=state.topic.name if state.topic else "General Coaching",
+            stage="exploration",
+            conversation_history=state.conversation_history,
+            user_emotional_state="engaged",  # Could be enhanced with NLP analysis
+            icf_competency=icf_competency,
+            session_goals=[]  # Could be populated based on user's stated goals
+        )
+        
+        # Generate intelligent response using OpenAI
+        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
         
         return {
-            "message": self._generate_contextual_response(user_input, competency, response_type),
-            "questions": competency.follow_up_questions[:2],  # Limit to 2 questions
+            "message": ai_response["message"],
+            "questions": ai_response["questions"][:2],  # Limit to 2 best questions
             "stage": "exploration",
-            "competency_applied": competency.competency.value,
-            "suggested_next_stage": "reflection" if conversation_depth >= 3 else "exploration"
+            "competency_applied": ai_response["competency_applied"],
+            "suggested_next_stage": ai_response.get("suggested_next_stage", "exploration"),
+            "ai_confidence": ai_response.get("confidence", 0.8),
+            "demo_mode": ai_response.get("demo_mode", False)
         }
     
     def generate_reflection_response(self, state: ConversationState, user_input: str) -> Dict[str, Any]:
-        """Generate response for reflection stage using creating awareness competency"""
+        """Generate response for reflection stage using OpenAI creating awareness competency"""
         self._add_to_history(state, "user", user_input)
         
-        competency = self.icf_framework.get_competency_response(ICFCompetency.CREATING_AWARENESS)
+        # Create coaching context for reflection stage
+        coaching_context = CoachingContext(
+            topic=state.topic.name if state.topic else "General Coaching",
+            stage="reflection",
+            conversation_history=state.conversation_history,
+            user_emotional_state="reflective",
+            icf_competency="creating_awareness",
+            session_goals=[]
+        )
+        
+        # Generate intelligent response using OpenAI
+        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
         
         # Generate insights based on conversation history
         insights = self._generate_insights(state)
         state.insights.extend(insights)
         
         return {
-            "message": f"I'm noticing some patterns in what you've shared. {insights[0] if insights else 'What patterns do you see in what we\'ve discussed?'}",
-            "questions": competency.follow_up_questions[:3],
+            "message": ai_response["message"],
+            "questions": ai_response["questions"],
             "stage": "reflection",
-            "competency_applied": competency.competency.value,
+            "competency_applied": ai_response["competency_applied"],
             "insights": insights,
-            "suggested_next_stage": "action_planning"
+            "suggested_next_stage": ai_response.get("suggested_next_stage", "action_planning"),
+            "ai_confidence": ai_response.get("confidence", 0.8),
+            "demo_mode": ai_response.get("demo_mode", False)
         }
     
     def generate_action_planning_response(self, state: ConversationState, user_input: str) -> Dict[str, Any]:
-        """Generate response for action planning stage"""
+        """Generate response for action planning stage using OpenAI"""
         self._add_to_history(state, "user", user_input)
         
-        competency = self.icf_framework.get_competency_response(ICFCompetency.DESIGNING_ACTIONS)
+        # Create coaching context for action planning stage
+        coaching_context = CoachingContext(
+            topic=state.topic.name if state.topic else "General Coaching",
+            stage="action_planning",
+            conversation_history=state.conversation_history,
+            user_emotional_state="ready_for_action",
+            icf_competency="designing_actions",
+            session_goals=[]
+        )
+        
+        # Generate intelligent response using OpenAI
+        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
         
         return {
-            "message": "Based on our conversation and the insights you've gained, what feels like the most important action you could take?",
-            "questions": competency.follow_up_questions,
+            "message": ai_response["message"],
+            "questions": ai_response["questions"],
             "stage": "action_planning",
-            "competency_applied": competency.competency.value,
+            "competency_applied": ai_response["competency_applied"],
+            "suggested_next_stage": ai_response.get("suggested_next_stage", "action_planning"),
+            "ai_confidence": ai_response.get("confidence", 0.8),
+            "demo_mode": ai_response.get("demo_mode", False),
             "action_template": {
                 "action": "",
                 "by_when": "",
                 "success_criteria": "",
                 "potential_obstacles": "",
                 "support_needed": ""
+            }
+        }
+    
+    def generate_follow_up_response(self, state: ConversationState, user_input: str) -> Dict[str, Any]:
+        """Generate response for follow-up stage using OpenAI"""
+        self._add_to_history(state, "user", user_input)
+        
+        # Create coaching context for follow-up stage
+        coaching_context = CoachingContext(
+            topic=state.topic.name if state.topic else "General Coaching",
+            stage="follow_up",
+            conversation_history=state.conversation_history,
+            user_emotional_state="committed_to_action",
+            icf_competency="managing_progress_and_accountability",
+            session_goals=[]
+        )
+        
+        # Generate intelligent response using OpenAI
+        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
+        
+        return {
+            "message": ai_response["message"],
+            "questions": ai_response["questions"],
+            "stage": "follow_up",
+            "competency_applied": ai_response["competency_applied"],
+            "suggested_next_stage": ai_response.get("suggested_next_stage", "follow_up"),
+            "ai_confidence": ai_response.get("confidence", 0.8),
+            "demo_mode": ai_response.get("demo_mode", False),
+            "session_summary": {
+                "topic_explored": state.topic.name if state.topic else "General Coaching",
+                "key_insights": state.insights[-3:] if state.insights else [],  # Last 3 insights
+                "actions_committed": len(state.actions),
+                "next_steps": "Continue implementing your action plan and reflect on progress"
             }
         }
     
@@ -234,22 +322,43 @@ class ConversationFlowEngine:
             "timestamp": datetime.now().isoformat()
         })
     
-    def _generate_contextual_response(self, user_input: str, competency, response_type: str) -> str:
-        """Generate contextual response based on user input and competency"""
-        if response_type == "clarification":
-            return f"Thank you for sharing that. {competency.response_template} What I'm hearing is that this situation is important to you. Can you help me understand more about what's behind this?"
-        else:
-            return f"That's really interesting. {competency.response_template} I'm curious about what assumptions or beliefs might be influencing your perspective here."
-    
     def _generate_insights(self, state: ConversationState) -> List[str]:
-        """Generate insights based on conversation history"""
-        # This is a simplified version - in practice, you'd use NLP to analyze patterns
+        """Generate meaningful insights based on conversation content"""
         insights = []
         user_messages = [msg["content"] for msg in state.conversation_history if msg["role"] == "user"]
         
-        if len(user_messages) >= 2:
-            insights.append("I notice you've mentioned several interconnected challenges.")
-            insights.append("There seems to be a pattern around [specific theme] in what you're sharing.")
-            insights.append("You appear to have clear awareness of what's not working.")
+        if len(user_messages) < 2:
+            return insights
         
-        return insights[:2]  # Return max 2 insights 
+        # Analyze conversation content for patterns
+        conversation_text = " ".join(user_messages).lower()
+        
+        # Identify key themes and patterns
+        if "procrastination" in conversation_text or "procrastinate" in conversation_text:
+            if "fear" in conversation_text or "scared" in conversation_text:
+                insights.append("Your procrastination appears to be connected to fear and self-doubt about your capabilities.")
+            if "new" in conversation_text and "task" in conversation_text:
+                insights.append("New or unfamiliar tasks seem to trigger your procrastination response.")
+            if "confidence" in conversation_text:
+                insights.append("Building self-confidence appears to be key to overcoming your procrastination patterns.")
+        
+        if "stress" in conversation_text or "overwhelm" in conversation_text:
+            if "mind" in conversation_text and "background" in conversation_text:
+                insights.append("Unfinished tasks create mental stress by running continuously in the background of your mind.")
+        
+        if "growth mindset" in conversation_text or "growth" in conversation_text:
+            insights.append("You're ready to shift from a fixed to a growth mindset when facing challenges.")
+        
+        if "comfort zone" in conversation_text:
+            insights.append("Moving beyond your comfort zone is where your greatest growth opportunities lie.")
+        
+        # Self-awareness insights
+        if "realize" in conversation_text or "notice" in conversation_text:
+            insights.append("Your self-awareness about these patterns is already a significant step toward change.")
+        
+        # Default insights if no specific patterns found
+        if not insights and len(user_messages) >= 3:
+            insights.append("You're showing great courage by exploring these challenging areas of your life.")
+            insights.append("I notice you have strong self-reflection skills that will serve you well.")
+        
+        return insights[:2]  # Return max 2 most relevant insights 

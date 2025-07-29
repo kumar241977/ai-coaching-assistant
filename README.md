@@ -295,3 +295,40 @@ For questions, issues, or contributions, please:
 ---
 
 **Built with ❤️ for coaches and coachees everywhere** 
+
+## 🚀 **Now Restart Again with Additional Fixes**
+
+I've added more safeguards to prevent duplicate messages:
+
+### **Step 1: Restart the App**
+In your **Codespace terminal**:
+```bash
+<code_block_to_apply_changes_from>
+```
+
+### **Step 2: Test the Clean Flow**
+1. **Hard refresh your browser**: **Ctrl+Shift+R**
+2. **Click "Performance Improvement"**
+3. **You should now see ONLY ONE clean message** like this:
+
+```
+🤖 Coach: Great, let's explore Performance Improvement. What I'm hearing is... Is that accurate?
+
+💭 Reflection Questions:
+• What specific aspect of your performance would you like to improve?
+• What's currently working well in your performance?
+• What challenges are you facing that impact your performance?
+```
+
+## 🔍 **Expected Clean Experience**
+
+### **✅ What You Should See:**
+- **Single coach message** when you select a topic
+- **Nicely formatted questions** in a gray box with bullet points
+- **No duplicate messages**
+- **Clean chat interface** with good spacing
+
+### **🎯 If It's Still Not Working:**
+**Tell me exactly what you see** after restarting and I'll identify the remaining issue.
+
+**Go ahead and restart the app now, then try clicking "Performance Improvement" again!** 🎉 

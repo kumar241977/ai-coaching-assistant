@@ -99,21 +99,21 @@ class PersonalizationEngine:
                 "frustration": "It sounds like this has been really challenging for you. Your frustration is completely understandable.",
                 "low_confidence": "I hear some uncertainty in what you're sharing. What would help you feel more confident about this?",
                 "excitement": "I can feel your energy and enthusiasm! This excitement can be a powerful resource.",
-                "default": "Thank you for sharing that with me. I'm here to support you through this."
+                "default": ""  # Empty to avoid interference with OpenAI responses
             },
             "challenging": {
                 "high_anxiety": "What would happen if you approached this with curiosity rather than worry?",
                 "frustration": "What assumptions might be contributing to this frustration?",
                 "low_confidence": "What evidence do you have that contradicts this doubt?",
                 "excitement": "How can you channel this excitement into focused action?",
-                "default": "What different perspective might serve you better here?"
+                "default": ""  # Empty to avoid interference with OpenAI responses
             },
             "direct": {
                 "high_anxiety": "Let's focus on what you can control right now.",
                 "frustration": "What specific action will move you forward?",
                 "low_confidence": "What's the smallest step you could take today?",
                 "excitement": "What's your next concrete step?",
-                "default": "What's the core issue here?"
+                "default": ""  # Empty to avoid interference with OpenAI responses
             }
         }
     
