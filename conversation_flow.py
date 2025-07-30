@@ -37,7 +37,35 @@ class ConversationFlowEngine:
         self.icf_framework = ICFCompetencyFramework()
         self.coaching_topics = self._initialize_coaching_topics()
         self.sessions = {}  # In-memory storage, replace with database in production
-        self.openai_coach = OpenAICoachingEngine()  # Initialize OpenAI coaching engine
+        self.openai_coach = None  # Lazy initialization - will be created when first needed
+    
+    def _get_openai_coach(self):
+        """Get OpenAI coach with lazy initialization"""
+        if self.openai_coach is None:
+            try:
+                from openai_coaching import OpenAICoachingEngine
+                self.openai_coach = OpenAICoachingEngine()
+                print("✅ OpenAI Coach: Initialized successfully")
+            except Exception as e:
+                print(f"⚠️ OpenAI Coach initialization error: {e}")
+                # Create a minimal fallback
+                self.openai_coach = self._create_fallback_coach()
+        return self.openai_coach
+    
+    def _create_fallback_coach(self):
+        """Create a simple fallback coach if OpenAI initialization fails"""
+        class FallbackCoach:
+            def generate_coaching_response(self, context, user_input):
+                return {
+                    "message": "Thank you for sharing that. Can you tell me more about what you're experiencing?",
+                    "questions": ["What would you like to explore further?", "How does this situation affect you?"],
+                    "competency_applied": "active_listening",
+                    "confidence": 0.7,
+                    "demo_mode": True
+                }
+            def reset_conversation_state(self):
+                pass
+        return FallbackCoach()
     
     def _initialize_coaching_topics(self) -> Dict[str, CoachingTopic]:
         return {
@@ -92,7 +120,7 @@ class ConversationFlowEngine:
             session_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
         # Reset conversation state for fresh start
-        self.openai_coach.reset_conversation_state()
+        self._get_openai_coach().reset_conversation_state()
         
         state = ConversationState(
             user_id=user_id,
@@ -182,7 +210,7 @@ class ConversationFlowEngine:
         )
         
         # Generate intelligent response using OpenAI
-        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
+        ai_response = self._get_openai_coach().generate_coaching_response(coaching_context, user_input)
         
         return {
             "message": ai_response["message"],
@@ -209,7 +237,7 @@ class ConversationFlowEngine:
         )
         
         # Generate intelligent response using OpenAI
-        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
+        ai_response = self._get_openai_coach().generate_coaching_response(coaching_context, user_input)
         
         # Generate insights based on conversation history
         insights = self._generate_insights(state)
@@ -241,7 +269,7 @@ class ConversationFlowEngine:
         )
         
         # Generate intelligent response using OpenAI
-        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
+        ai_response = self._get_openai_coach().generate_coaching_response(coaching_context, user_input)
         
         return {
             "message": ai_response["message"],
@@ -275,7 +303,7 @@ class ConversationFlowEngine:
         )
         
         # Generate intelligent response using OpenAI
-        ai_response = self.openai_coach.generate_coaching_response(coaching_context, user_input)
+        ai_response = self._get_openai_coach().generate_coaching_response(coaching_context, user_input)
         
         return {
             "message": ai_response["message"],
