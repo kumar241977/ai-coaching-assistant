@@ -18,13 +18,20 @@ class CoachingAssistant {
         document.querySelectorAll('.topic-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 const topic = e.currentTarget.dataset.topic;
+                // Clear any existing messages before starting new topic
+                document.getElementById('chat-messages').innerHTML = '';
                 this.selectTopic(topic);
             });
         });
         
         // New session button
         document.getElementById('new-session-btn').addEventListener('click', () => {
-            this.startNewSession();
+            // Clear chat and reset to welcome screen
+            document.getElementById('chat-messages').innerHTML = '';
+            this.showWelcomeScreen();
+            this.sessionId = null;
+            this.currentStage = 'intake';
+            this.updateSessionStatus('Ready to start');
         });
         
         // Send message
@@ -74,9 +81,8 @@ class CoachingAssistant {
                 this.currentStage = 'intake';
                 
                 this.updateSessionStatus('Session Active');
-                this.showChatInterface();
-                this.addMessage('coach', data.response.message, data.response.questions);
-                this.updateStageIndicator('intake');
+                // Don't show chat interface or add messages here
+                // Let topic selection handle the first message
             }
         } catch (error) {
             console.error('Error starting session:', error);
@@ -110,6 +116,10 @@ class CoachingAssistant {
             
             if (data.message) {
                 this.showChatInterface();
+                // Clear any existing messages first
+                document.getElementById('chat-messages').innerHTML = '';
+                
+                // Add a single welcome message
                 this.addMessage('coach', data.message, data.questions);
                 this.updateStageIndicator(data.stage);
                 this.currentStage = data.stage;
@@ -132,6 +142,9 @@ class CoachingAssistant {
         
         if (!message || this.isLoading) return;
         
+        console.log('🔍 DEBUG: Sending message:', message);
+        console.log('🔍 DEBUG: Session ID:', this.sessionId);
+        
         // Add user message to chat
         this.addMessage('user', message);
         input.value = '';
@@ -139,6 +152,7 @@ class CoachingAssistant {
         this.showLoading(true);
         
         try {
+            console.log('🔍 DEBUG: Making API request to /api/send-message');
             const response = await fetch('/api/send-message', {
                 method: 'POST',
                 headers: {
@@ -151,7 +165,19 @@ class CoachingAssistant {
                 })
             });
             
+            console.log('🔍 DEBUG: Response status:', response.status);
+            console.log('🔍 DEBUG: Response ok:', response.ok);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const data = await response.json();
+            console.log('🔍 DEBUG: Response data:', data);
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
             
             if (data.message) {
                 this.addMessage('coach', data.message, data.questions);
@@ -174,9 +200,16 @@ class CoachingAssistant {
                 if (data.insights && data.insights.length > 0) {
                     this.showInsights(data.insights);
                 }
+            } else {
+                console.warn('🔍 DEBUG: No message in response data');
             }
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('❌ DEBUG: Error sending message:', error);
+            console.error('❌ DEBUG: Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             this.showError('Failed to send message. Please try again.');
         } finally {
             this.showLoading(false);
@@ -241,21 +274,36 @@ class CoachingAssistant {
         messageContent.appendChild(messageText);
         
         if (questions && questions.length > 0) {
-            const questionsDiv = document.createElement('div');
-            questionsDiv.className = 'message-questions';
+            // Filter out generic/confusing questions
+            const validQuestions = questions.filter(q => 
+                q && 
+                q.length > 10 && 
+                !q.includes("Thank you for sharing that with me") &&
+                !q.includes("Can you tell me more about that?") &&
+                !q.includes("What else is important here?") &&
+                !q.includes("Tell me more about that") &&
+                !q.includes("What's most important here?") &&
+                !q.toLowerCase().includes("that's a really insightful perspective") &&
+                !q.includes("I'm here to support you through this")
+            );
             
-            const questionsTitle = document.createElement('h4');
-            questionsTitle.textContent = 'Reflection Questions:';
-            questionsDiv.appendChild(questionsTitle);
-            
-            const questionsList = document.createElement('ul');
-            questions.forEach(question => {
-                const li = document.createElement('li');
-                li.textContent = question;
-                questionsList.appendChild(li);
-            });
-            questionsDiv.appendChild(questionsList);
-            messageContent.appendChild(questionsDiv);
+            if (validQuestions.length > 0) {
+                const questionsDiv = document.createElement('div');
+                questionsDiv.className = 'message-questions';
+                
+                const questionsTitle = document.createElement('h4');
+                questionsTitle.textContent = 'Reflection Questions:';
+                questionsDiv.appendChild(questionsTitle);
+                
+                const questionsList = document.createElement('ul');
+                validQuestions.forEach(question => {
+                    const li = document.createElement('li');
+                    li.textContent = question;
+                    questionsList.appendChild(li);
+                });
+                questionsDiv.appendChild(questionsList);
+                messageContent.appendChild(questionsDiv);
+            }
         }
         
         if (insights && insights.length > 0) {
@@ -423,8 +471,46 @@ class CoachingAssistant {
     }
     
     showError(message) {
-        // Simple error display - could be enhanced with a toast or modal
+        // Better error display with UI recovery
         alert(message);
+        
+        // Reset UI state to allow user to try again
+        this.isLoading = false;
+        this.showLoading(false);
+        
+        // Enable send button and clear any stuck states
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) sendBtn.disabled = false;
+        
+        // Focus back on input for retry
+        const input = document.getElementById('user-input');
+        if (input) {
+            setTimeout(() => input.focus(), 100);
+        }
+        
+        // If this is a session-related error, offer to restart
+        if (message.includes('session') || message.includes('Session')) {
+            console.log('🔄 DEBUG: Session error detected, might need session restart');
+            if (confirm('There seems to be a session issue. Would you like to restart the session?')) {
+                this.restartSession();
+            }
+        }
+        
+        console.log('UI state reset after error:', message);
+    }
+    
+    async restartSession() {
+        console.log('🔄 DEBUG: Restarting session...');
+        this.sessionId = null;
+        this.currentStage = 'intake';
+        
+        // Clear chat messages
+        document.getElementById('chat-messages').innerHTML = '';
+        
+        // Start a new session
+        await this.startNewSession();
+        
+        console.log('✅ DEBUG: Session restarted successfully');
     }
     
     generateUserId() {
