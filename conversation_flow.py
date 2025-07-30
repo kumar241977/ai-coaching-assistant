@@ -153,7 +153,19 @@ class ConversationFlowEngine:
                 # Analyze user input for emotional content and themes
                 user_lower = user_input.lower() if user_input else ""
                 
-                if any(word in user_lower for word in ['stressed', 'overwhelmed', 'pressure']):
+                if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
+                    return {
+                        "message": "I hear that procrastination is showing up as a significant challenge for you. That's something many people struggle with, and it takes courage to name it directly. What do you notice about when procrastination tends to happen most for you?",
+                        "questions": [
+                            "What tasks or situations do you find yourself putting off most often?",
+                            "What do you think might be underneath the procrastination - fear, perfectionism, or something else?",
+                            "When you do manage to take action despite the urge to procrastinate, what helps you push through?"
+                        ],
+                        "competency_applied": "active_listening",
+                        "confidence": 0.9,
+                        "demo_mode": True
+                    }
+                elif any(word in user_lower for word in ['stressed', 'overwhelmed', 'pressure']):
                     return {
                         "message": "I can hear that you're feeling stressed and overwhelmed. That sounds really challenging. What do you think is contributing most to that feeling of pressure?",
                         "questions": [
@@ -177,13 +189,25 @@ class ConversationFlowEngine:
                         "confidence": 0.8,
                         "demo_mode": True
                     }
+                elif any(word in user_lower for word in ['focus', 'distracted', 'concentration']):
+                    return {
+                        "message": "Focus and concentration challenges can really impact how we feel about our performance. It sounds like this is affecting you in meaningful ways. What have you noticed about your focus patterns?",
+                        "questions": [
+                            "When do you find your focus is strongest?",
+                            "What distractions tend to pull you away most often?",
+                            "What does your ideal focus environment look like?"
+                        ],
+                        "competency_applied": "creating_awareness",
+                        "confidence": 0.8,
+                        "demo_mode": True
+                    }
                 else:
                     return {
-                        "message": "I'm hearing that this situation has multiple layers. What feels like the most important aspect for us to explore together?",
+                        "message": f"Thank you for sharing that with me. I can sense this is important to you - '{user_input}'. What stands out most to you as we explore this together?",
                         "questions": [
                             "What patterns are you noticing as we talk about this?",
                             "What insights are emerging for you?",
-                            "What feels most significant to focus on?"
+                            "How has this been affecting other areas of your life or work?"
                         ],
                         "competency_applied": "creating_awareness",
                         "confidence": 0.7,
