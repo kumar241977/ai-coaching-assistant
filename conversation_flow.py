@@ -3,6 +3,8 @@ from typing import List, Dict, Any, Optional
 from enum import Enum
 import json
 from datetime import datetime
+import threading
+import time
 from icf_competencies import ICFCompetencyFramework, ICFCompetency
 from openai_coaching import OpenAICoachingEngine, CoachingContext
 
@@ -40,32 +42,173 @@ class ConversationFlowEngine:
         self.openai_coach = None  # Lazy initialization - will be created when first needed
     
     def _get_openai_coach(self):
-        """Get OpenAI coach with lazy initialization"""
+        """Get OpenAI coach with timeout handling and detailed logging"""
         if self.openai_coach is None:
-            try:
-                from openai_coaching import OpenAICoachingEngine
-                self.openai_coach = OpenAICoachingEngine()
-                print("✅ OpenAI Coach: Initialized successfully")
-            except Exception as e:
-                print(f"⚠️ OpenAI Coach initialization error: {e}")
-                # Create a minimal fallback
-                self.openai_coach = self._create_fallback_coach()
+            print("🔍 DEBUG: Starting OpenAI coach initialization...")
+            
+            # Use timeout to prevent indefinite hanging
+            initialization_result = [None, None]  # [coach_instance, error]
+            
+            def init_openai_coach():
+                try:
+                    print("🔍 DEBUG: About to import OpenAICoachingEngine...")
+                    from openai_coaching import OpenAICoachingEngine
+                    print("🔍 DEBUG: OpenAICoachingEngine imported successfully")
+                    
+                    print("🔍 DEBUG: About to create OpenAICoachingEngine instance...")
+                    coach = OpenAICoachingEngine()
+                    print("🔍 DEBUG: OpenAICoachingEngine instance created successfully")
+                    
+                    initialization_result[0] = coach
+                    print("✅ OpenAI Coach: Initialized successfully with timeout protection")
+                except Exception as e:
+                    print(f"❌ DEBUG: OpenAI initialization error: {e}")
+                    print(f"❌ DEBUG: Error type: {type(e).__name__}")
+                    import traceback
+                    traceback.print_exc()
+                    initialization_result[1] = e
+            
+            # Start initialization in a separate thread
+            print("🔍 DEBUG: Starting initialization thread...")
+            init_thread = threading.Thread(target=init_openai_coach, daemon=True)
+            init_thread.start()
+            
+            # Wait with timeout (30 seconds max)
+            print("🔍 DEBUG: Waiting for initialization (30s timeout)...")
+            init_thread.join(timeout=30.0)
+            
+            if init_thread.is_alive():
+                print("⚠️ DEBUG: OpenAI initialization timed out after 30 seconds - using fallback")
+                self.openai_coach = self._create_enhanced_fallback_coach()
+            elif initialization_result[0] is not None:
+                print("✅ DEBUG: OpenAI initialization completed successfully")
+                self.openai_coach = initialization_result[0]
+            else:
+                error = initialization_result[1] or "Unknown error"
+                print(f"❌ DEBUG: OpenAI initialization failed: {error}")
+                self.openai_coach = self._create_enhanced_fallback_coach()
+        
         return self.openai_coach
     
-    def _create_fallback_coach(self):
-        """Create a simple fallback coach if OpenAI initialization fails"""
-        class FallbackCoach:
+    def _create_enhanced_fallback_coach(self):
+        """Create an enhanced fallback coach with better intelligence"""
+        class EnhancedFallbackCoach:
+            def __init__(self):
+                self.conversation_history = []
+                self.topic_context = None
+                
             def generate_coaching_response(self, context, user_input):
+                # Store context for better responses
+                if context:
+                    self.topic_context = context.topic
+                
+                # Add to conversation history for context
+                if user_input:
+                    self.conversation_history.append(user_input.lower())
+                
+                # Enhanced topic-based responses with conversation depth awareness
+                conversation_depth = len(self.conversation_history)
+                
+                # Determine response based on conversation depth and content
+                if conversation_depth <= 1:
+                    # Initial/topic selection responses
+                    return self._get_initial_response(user_input)
+                elif conversation_depth <= 3:
+                    # Early exploration responses
+                    return self._get_exploration_response(user_input)
+                else:
+                    # Deeper conversation responses
+                    return self._get_deeper_response(user_input)
+            
+            def _get_initial_response(self, user_input):
+                user_lower = user_input.lower() if user_input else ""
+                
+                if any(word in user_lower for word in ['performance', 'productivity', 'work better', 'effectiveness']):
+                    return {
+                        "message": "I understand you're working on performance improvement. That's a valuable area to focus on. What specific aspects of your performance feel most important to address right now?",
+                        "questions": [
+                            "What does peak performance look like for you?",
+                            "What obstacles are currently impacting your effectiveness?",
+                            "What strengths can you build upon to improve your performance?"
+                        ],
+                        "competency_applied": "establishing_trust_and_intimacy",
+                        "confidence": 0.8,
+                        "demo_mode": True
+                    }
+                # Add similar blocks for other topics...
+                else:
+                    return {
+                        "message": "Thank you for sharing that with me. I can sense this is important to you. Can you help me understand more about what you're experiencing?",
+                        "questions": [
+                            "What would you like to explore further about this?",
+                            "How is this situation affecting you?",
+                            "What aspects feel most significant to you?"
+                        ],
+                        "competency_applied": "active_listening",
+                        "confidence": 0.7,
+                        "demo_mode": True
+                    }
+            
+            def _get_exploration_response(self, user_input):
+                # Analyze user input for emotional content and themes
+                user_lower = user_input.lower() if user_input else ""
+                
+                if any(word in user_lower for word in ['stressed', 'overwhelmed', 'pressure']):
+                    return {
+                        "message": "I can hear that you're feeling stressed and overwhelmed. That sounds really challenging. What do you think is contributing most to that feeling of pressure?",
+                        "questions": [
+                            "When do you notice the stress is most intense?",
+                            "What would it feel like to have less pressure in this area?",
+                            "What support would be most helpful right now?"
+                        ],
+                        "competency_applied": "active_listening",
+                        "confidence": 0.8,
+                        "demo_mode": True
+                    }
+                elif any(word in user_lower for word in ['confused', 'unclear', 'not sure']):
+                    return {
+                        "message": "It sounds like there's some uncertainty here, which is completely understandable. What aspect would you like to get clearer on first?",
+                        "questions": [
+                            "What would clarity in this situation look like for you?",
+                            "What information or perspective might help you feel more certain?",
+                            "What feels most important to understand right now?"
+                        ],
+                        "competency_applied": "powerful_questioning",
+                        "confidence": 0.8,
+                        "demo_mode": True
+                    }
+                else:
+                    return {
+                        "message": "I'm hearing that this situation has multiple layers. What feels like the most important aspect for us to explore together?",
+                        "questions": [
+                            "What patterns are you noticing as we talk about this?",
+                            "What insights are emerging for you?",
+                            "What feels most significant to focus on?"
+                        ],
+                        "competency_applied": "creating_awareness",
+                        "confidence": 0.7,
+                        "demo_mode": True
+                    }
+            
+            def _get_deeper_response(self, user_input):
+                # More sophisticated responses for deeper conversation
                 return {
-                    "message": "Thank you for sharing that. Can you tell me more about what you're experiencing?",
-                    "questions": ["What would you like to explore further?", "How does this situation affect you?"],
-                    "competency_applied": "active_listening",
-                    "confidence": 0.7,
+                    "message": "You've shared some really valuable insights. I'm curious about what you're discovering about yourself through this exploration. What feels like the most important realization?",
+                    "questions": [
+                        "What actions are you feeling drawn to take?",
+                        "What would be different if you made this change?",
+                        "What first step feels most meaningful to you?"
+                    ],
+                    "competency_applied": "designing_actions",
+                    "confidence": 0.8,
                     "demo_mode": True
                 }
+            
             def reset_conversation_state(self):
-                pass
-        return FallbackCoach()
+                self.conversation_history = []
+                self.topic_context = None
+                
+        return EnhancedFallbackCoach()
     
     def _initialize_coaching_topics(self) -> Dict[str, CoachingTopic]:
         return {
