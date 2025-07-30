@@ -125,7 +125,11 @@ class CoachingAssistant {
                 this.currentStage = data.stage;
                 
                 if (data.emotional_analysis) {
-                    this.showEmotionalAnalysis(data.emotional_analysis);
+                    try {
+                        this.showEmotionalAnalysis(data.emotional_analysis);
+                    } catch (error) {
+                        console.log('🔍 DEBUG: Skipping emotional analysis display due to missing HTML elements');
+                    }
                 }
             }
         } catch (error) {
@@ -190,7 +194,11 @@ class CoachingAssistant {
                 this.currentStage = data.stage;
                 
                 if (data.emotional_analysis) {
-                    this.showEmotionalAnalysis(data.emotional_analysis);
+                    try {
+                        this.showEmotionalAnalysis(data.emotional_analysis);
+                    } catch (error) {
+                        console.log('🔍 DEBUG: Skipping emotional analysis display due to missing HTML elements');
+                    }
                 }
                 
                 if (data.stage === 'action_planning' && data.action_template) {
@@ -335,6 +343,12 @@ class CoachingAssistant {
         const analysisDiv = document.getElementById('emotional-analysis');
         const sentimentSpan = document.getElementById('sentiment-indicator');
         const emotionSpan = document.getElementById('primary-emotion');
+        
+        // Skip if elements don't exist in HTML
+        if (!analysisDiv || !sentimentSpan || !emotionSpan) {
+            console.log('🔍 DEBUG: Emotional analysis elements not found in HTML, skipping display');
+            return;
+        }
         
         sentimentSpan.textContent = analysis.sentiment;
         sentimentSpan.className = `sentiment ${analysis.sentiment}`;
