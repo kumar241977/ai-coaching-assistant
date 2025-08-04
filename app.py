@@ -156,15 +156,18 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
     previous_topics = []
     recent_responses = []
     procrastination_mentions = 0
+    fear_mentions = 0
+    insight_indicators = []
     
-    for entry in conversation_history[-5:]:  # Last 5 messages
+    for entry in conversation_history[-8:]:  # Last 8 messages for better context
         content = entry['content'].lower()
         if entry['role'] == 'coach':
             recent_responses.append(content)
         
         # Track topics mentioned
-        if 'fear' in content or 'scared' in content or 'afraid' in content:
+        if 'fear' in content or 'scared' in content or 'afraid' in content or 'worried' in content:
             previous_topics.append('fear')
+            fear_mentions += 1
         if 'stress' in content or 'anxiety' in content or 'anxious' in content:
             previous_topics.append('stress')
         if 'confidence' in content:
@@ -172,9 +175,22 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
         if 'procrastination' in content or 'procrastinate' in content:
             procrastination_mentions += 1
     
+    # Detect insight-sharing vs problem-stating
+    sharing_insights = any(phrase in user_lower for phrase in [
+        'when i started', 'i learned', 'i realized', 'i think', 'i believe', 
+        'eventually i', 'i was able to', 'has stayed with me', 'i got better',
+        'i discovered', 'i found that', 'looking back', 'now i see'
+    ])
+    
+    # Detect progress or capability mentions
+    showing_growth = any(phrase in user_lower for phrase in [
+        'got better', 'improved', 'eventually', 'was able to', 'learned',
+        'overcame', 'managed to', 'succeeded', 'figured out'
+    ])
+    
     # Avoid repetitive responses by checking recent coach messages
     def response_recently_used(phrase):
-        return any(phrase in response for response in recent_responses[-2:])
+        return any(phrase.lower() in response for response in recent_responses[-2:])
     
     # Enhanced keyword detection with progression-based responses
     
@@ -205,9 +221,9 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
                 ]
             }
     
-    # Fear and failure responses - progressive depth
+    # Fear and failure responses - progressive depth with better progression
     elif any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
-        if 'fear' not in previous_topics:
+        if fear_mentions == 0:  # First fear mention
             return {
                 'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
                 'questions': [
@@ -215,12 +231,55 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
                     "What would it mean about you if you did fail at this task?"
                 ]
             }
-        else:
+        elif fear_mentions == 1 and not sharing_insights:  # Second mention, still exploring
             return {
                 'message': "Fear seems to be a central theme in what you're experiencing. I'm curious - when did you first learn to be afraid of failing? What message did you receive about making mistakes?",
                 'questions': [
                     "What would you tell a good friend who was experiencing this same fear?",
                     "What evidence do you have that contradicts this fear?"
+                ]
+            }
+        elif sharing_insights and showing_growth:  # They're sharing personal history and growth
+            return {
+                'message': "Thank you for sharing that personal experience with coding and overcoming those initial roadblocks. It sounds like you've actually proven to yourself that you can work through challenges and get better. What do you think helped you push through those coding fears back then?",
+                'questions': [
+                    "How might you apply what you learned from getting better at coding to your current challenges?",
+                    "What would it look like to trust your ability to 'eventually get better' at new complex tasks?"
+                ]
+            }
+        elif sharing_insights:  # Sharing insights but not necessarily showing growth
+            return {
+                'message': "I appreciate you sharing the origin of this fear - that moment when coding roadblocks first triggered that fear of failing. It takes real self-awareness to connect current patterns to past experiences. What do you notice about how this early fear might be influencing you now?",
+                'questions': [
+                    "How has this fear served you over the years, and how might it be limiting you now?",
+                    "What would you need to feel more confident when facing new complex challenges?"
+                ]
+            }
+        else:  # Multiple fear mentions - focus on moving forward
+            return {
+                'message': "I'm hearing how deeply this fear has influenced your relationship with challenging tasks. Given everything you've shared about where this fear comes from, what feels most important to address right now?",
+                'questions': [
+                    "What would be different if you could approach complex tasks with curiosity instead of fear?",
+                    "What's one way you could start building evidence that you can handle challenging work?"
+                ]
+            }
+    
+    # Complex tasks and time pressure responses
+    elif any(word in user_lower for word in ['complex activity', 'assigned', 'complete it on time', 'roadblocks', 'hit roadblocks']):
+        if showing_growth:
+            return {
+                'message': "I'm struck by something important in what you shared - you mentioned hitting roadblocks when coding but eventually getting better at it. That tells me you have experience working through complexity and succeeding. What helped you persist through those coding challenges?",
+                'questions': [
+                    "What strategies did you use when you got stuck on coding problems?",
+                    "How can you apply that same persistence to other complex activities you face now?"
+                ]
+            }
+        else:
+            return {
+                'message': "It sounds like complex activities trigger a cascade of worry - about time, capability, and whether to engage at all. That's a lot of mental energy going into just deciding whether to start. What would it feel like to approach a complex task with confidence?",
+                'questions': [
+                    "What would need to be different for you to feel ready to tackle complexity?",
+                    "When you do successfully complete complex work, what conditions helped you succeed?"
                 ]
             }
     
@@ -253,8 +312,16 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
                 ]
             }
     
-    # Default responses - vary based on conversation depth
-    if conversation_depth <= 2:
+    # Default responses - vary based on conversation depth and insights shared
+    if sharing_insights and conversation_depth >= 3:
+        return {
+            'message': "I can hear the self-reflection and awareness in what you're sharing. You're making connections between past experiences and current patterns. What insights are becoming clearer for you through our conversation?",
+            'questions': [
+                "What feels most important to take away from what we've explored?",
+                "How might you use these insights to approach challenges differently?"
+            ]
+        }
+    elif conversation_depth <= 2:
         return {
             'message': "Thank you for sharing that with me. I can sense there's a lot beneath the surface of what you're describing. What feels most important for us to explore together right now?",
             'questions': [
