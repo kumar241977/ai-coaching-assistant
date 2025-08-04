@@ -105,23 +105,42 @@ def index():
 @app.route('/api/start-session', methods=['POST'])
 def start_session():
     """Start a new coaching session"""
-    user_id = request.json.get('user_id', str(uuid.uuid4()))
-    session_id = str(uuid.uuid4())
-    
-    # Create new conversation state
-    state = conversation_engine.start_new_session(user_id, session_id)
-    
-    # Generate initial intake response
-    response = conversation_engine.generate_intake_response(state)
-    
-    # Store session in database
-    save_session_to_db(state)
-    
-    return jsonify({
-        'session_id': session_id,
-        'user_id': user_id,
-        'response': response
-    })
+    try:
+        print(f"🔍 START_SESSION DEBUG: Starting new session...")
+        
+        user_id = request.json.get('user_id', str(uuid.uuid4())) if request.json else str(uuid.uuid4())
+        session_id = str(uuid.uuid4())
+        
+        print(f"🔍 START_SESSION DEBUG: user_id={user_id}, session_id={session_id}")
+        
+        # Create new conversation state
+        print(f"🔍 START_SESSION DEBUG: Creating conversation state...")
+        state = conversation_engine.start_new_session(user_id, session_id)
+        print(f"🔍 START_SESSION DEBUG: Conversation state created successfully")
+        
+        # Generate initial intake response
+        print(f"🔍 START_SESSION DEBUG: Generating intake response...")
+        response = conversation_engine.generate_intake_response(state)
+        print(f"🔍 START_SESSION DEBUG: Intake response generated successfully")
+        
+        # Store session in database
+        print(f"🔍 START_SESSION DEBUG: Saving session to database...")
+        save_session_to_db(state)
+        print(f"🔍 START_SESSION DEBUG: Session saved to database successfully")
+        
+        print(f"✅ START_SESSION DEBUG: Session created successfully")
+        return jsonify({
+            'session_id': session_id,
+            'user_id': user_id,
+            'response': response
+        })
+        
+    except Exception as e:
+        print(f"❌ START_SESSION DEBUG: Unexpected error: {e}")
+        print(f"❌ START_SESSION DEBUG: Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to start session: {str(e)}'}), 500
 
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
