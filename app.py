@@ -4,8 +4,16 @@ import uuid
 from datetime import datetime
 import json
 import os
+from dotenv import load_dotenv
+import openai
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
+
+# Configure OpenAI API key from environment variable
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Simple in-memory storage for testing
 sessions = {}
@@ -39,16 +47,7 @@ def init_db():
 def get_ai_coaching_response(user_message, conversation_history, topic):
     """Generate AI-powered adaptive coaching response"""
     try:
-        # TEMPORARILY DISABLE OPENAI for stability - enhanced fallback is excellent
-        print("🔧 DEBUG: OpenAI temporarily disabled for stability - using enhanced fallback")
-        return get_enhanced_fallback_response(user_message, conversation_history, topic)
-        
-        # Try to import OpenAI (DISABLED FOR NOW)
-        import openai
-        
-        # Set API key from environment variable
-        openai.api_key = os.getenv('OPENAI_API_KEY')
-        
+        # Check if OpenAI API key is available
         if not openai.api_key:
             print("⚠️ No OpenAI API key found, using enhanced fallback")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
@@ -92,12 +91,15 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         
         # Make OpenAI request with timeout protection
         try:
-            response = openai.ChatCompletion.create(
+            # Create OpenAI client
+            client = openai.OpenAI(api_key=openai.api_key)
+            
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=200,  # Reduced for faster response
                 temperature=0.7,
-                timeout=5  # Shorter timeout
+                timeout=10  # Reasonable timeout
             )
         except Exception as openai_error:
             print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
