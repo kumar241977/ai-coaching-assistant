@@ -86,14 +86,19 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         
         print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
         
-        # Make OpenAI request
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=300,
-            temperature=0.7,
-            timeout=10  # 10 second timeout
-        )
+        # Make OpenAI request with timeout protection
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                max_tokens=200,  # Reduced for faster response
+                temperature=0.7,
+                timeout=5  # Shorter timeout
+            )
+        except Exception as openai_error:
+            print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
+            # Immediately fall back to enhanced responses
+            raise openai_error
         
         ai_message = response.choices[0].message.content.strip()
         
