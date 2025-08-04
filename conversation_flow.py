@@ -396,7 +396,14 @@ class ConversationFlowEngine:
         coach = self._get_openai_coach()
         print(f"🔍 DEBUG: Coach type: {type(coach).__name__}")
         
-        ai_response = coach.generate_coaching_response(coaching_context, user_input)
+        # TEMPORARY FIX: Force fallback coach for better procrastination detection
+        if hasattr(coach, 'conversation_history'):  # This is our enhanced fallback coach
+            print("🔍 DEBUG: Using enhanced fallback coach (forced)")
+            ai_response = coach.generate_coaching_response(coaching_context, user_input)
+        else:
+            print("🔍 DEBUG: OpenAI coach detected, but forcing fallback for better keyword detection")
+            fallback_coach = self._create_enhanced_fallback_coach()
+            ai_response = fallback_coach.generate_coaching_response(coaching_context, user_input)
         print(f"🔍 DEBUG: AI response: {ai_response}")
         
         return {
