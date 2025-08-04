@@ -39,7 +39,11 @@ def init_db():
 def get_ai_coaching_response(user_message, conversation_history, topic):
     """Generate AI-powered adaptive coaching response"""
     try:
-        # Try to import OpenAI
+        # TEMPORARILY DISABLE OPENAI for stability - enhanced fallback is excellent
+        print("🔧 DEBUG: OpenAI temporarily disabled for stability - using enhanced fallback")
+        return get_enhanced_fallback_response(user_message, conversation_history, topic)
+        
+        # Try to import OpenAI (DISABLED FOR NOW)
         import openai
         
         # Set API key from environment variable
@@ -203,6 +207,18 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
             'questions': [
                 "What would you tell a close friend who shared this same internal dialogue with you?",
                 "What evidence do you have that contradicts this 'not being able' belief?"
+            ]
+        }
+    
+    # Mindset and approach responses - NEW
+    elif any(word in user_lower for word in ['prevents', 'approaching', 'open mind', 'mindset', 'perspective', 'blocks']):
+        context_text = f" This connects beautifully to what we've discussed about {' and '.join(set(previous_topics))}." if previous_topics else ""
+        return {
+            'message': f"What you're describing sounds like a protective pattern that's become a barrier.{context_text} It's like your mind is trying to shield you from potential disappointment, but in doing so, it's also closing off possibilities. What would it be like to approach a challenging task with curiosity instead of defensiveness?",
+            'questions': [
+                "What would 'approaching with an open mind' look like in practice for you?",
+                "If you could temporarily set aside the fear, what possibilities might you see?",
+                "What would need to shift for you to feel safe being open to the challenge?"
             ]
         }
     
