@@ -138,10 +138,11 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
         if 'confidence' in content:
             previous_topics.append('confidence')
     
-    # Context-aware responses based on conversation progression
-    if conversation_depth <= 2:
-        # Early conversation - establish trust and understanding
-        if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
+    # Enhanced keyword detection - works at any conversation depth
+    
+    # Procrastination responses (any depth)
+    if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding', 'struggle']):
+        if conversation_depth <= 2:
             return {
                 'message': "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?",
                 'questions': [
@@ -149,37 +150,66 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
                     "What might be underneath the procrastination - fear, perfectionism, or something else?"
                 ]
             }
-    
-    elif conversation_depth <= 4:
-        # Mid conversation - explore deeper patterns
-        if any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
-            if 'fear' in previous_topics:
-                return {
-                    'message': "I'm noticing fear has come up multiple times in our conversation. This suggests it's playing a central role in your experience. What do you think this fear is ultimately trying to protect you from?",
-                    'questions': [
-                        "If this fear wasn't present, what would you do differently?",
-                        "What would you need to feel more equipped to handle potential failure?"
-                    ]
-                }
-            else:
-                return {
-                    'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
-                    'questions': [
-                        "When you imagine completing the task successfully, what comes up for you?",
-                        "What would it mean about you if you did fail at this task?"
-                    ]
-                }
-    
-    else:
-        # Later conversation - focus on insights and action
-        if any(word in user_lower for word in ['confidence', 'self-confidence', 'doubt', 'self-doubt', 'losing', 'loosing']):
+        else:
+            context_text = f" building on what we've discussed about {', '.join(set(previous_topics))}" if previous_topics else ""
             return {
-                'message': f"Given everything we've explored - from {', '.join(set(previous_topics))} to now discussing confidence - I'm curious what insights are emerging for you. What's becoming clearer about your relationship with these challenging tasks?",
+                'message': f"I'm hearing procrastination come up again in our conversation{context_text}. What patterns are you noticing about when this avoidance shows up most strongly?",
                 'questions': [
-                    "What would be one small step that could help you build evidence of your capability?",
-                    "How might you apply what you're learning here to future situations?"
+                    "What would need to feel different for you to approach these tasks directly?",
+                    "What's the cost of this procrastination pattern on your confidence and well-being?"
                 ]
             }
+    
+    # Fear and failure responses (any depth)
+    elif any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
+        if 'fear' in previous_topics:
+            return {
+                'message': "I'm noticing fear has come up multiple times in our conversation. This suggests it's playing a central role in your experience. What do you think this fear is ultimately trying to protect you from?",
+                'questions': [
+                    "If this fear wasn't present, what would you do differently?",
+                    "What would you need to feel more equipped to handle potential failure?"
+                ]
+            }
+        else:
+            return {
+                'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
+                'questions': [
+                    "When you imagine completing the task successfully, what comes up for you?",
+                    "What would it mean about you if you did fail at this task?"
+                ]
+            }
+    
+    # Physical symptoms and body responses
+    elif any(word in user_lower for word in ['body', 'shiver', 'sweat', 'profusely', 'physical', 'symptoms']):
+        context_text = f" I'm also noticing this connects to the {' and '.join(set(previous_topics))} we discussed earlier." if previous_topics else ""
+        return {
+            'message': f"I can hear how intensely your body is responding to these challenging situations.{context_text} Your body is giving you important information about your stress response. What do you think your body is trying to tell you?",
+            'questions': [
+                "What helps you feel more grounded when you notice these physical reactions?",
+                "What would it be like to approach a challenging task when your body feels calm and ready?"
+            ]
+        }
+    
+    # Self-doubt and belief responses
+    elif any(word in user_lower for word in ['believe', 'not be able', 'cannot', 'reasons', 'make excuses', 'doubt']):
+        context_text = f" given everything we've explored about {' and '.join(set(previous_topics))}" if previous_topics else ""
+        return {
+            'message': f"I hear you describing the internal narrative that emerges{context_text}. It sounds like there's a part of you that creates reasons to step away from the challenge. What do you think that part is trying to protect you from?",
+            'questions': [
+                "What would you tell a close friend who shared this same internal dialogue with you?",
+                "What evidence do you have that contradicts this 'not being able' belief?"
+            ]
+        }
+    
+    # Confidence and self-worth responses  
+    elif any(word in user_lower for word in ['confidence', 'self-confidence', 'doubt', 'self-doubt', 'losing', 'loosing']):
+        return {
+            'message': f"Given everything we've explored - from {', '.join(set(previous_topics))} to now discussing confidence - I'm curious what insights are emerging for you. What's becoming clearer about your relationship with these challenging tasks?",
+            'questions': [
+                "What would be one small step that could help you build evidence of your capability?",
+                "How might you apply what you're learning here to future situations?"
+            ]
+        }
     
     # Enhanced adaptive responses with context
     if any(word in user_lower for word in ['stress', 'stressed', 'anxiety', 'anxious', 'overwhelm', 'overwhelmed']):
