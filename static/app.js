@@ -4,8 +4,7 @@ class CoachingAssistant {
         this.userId = null;
         this.currentStage = 'intake';
         this.isLoading = false;
-        this.loadingTimeout = null;
-        this.messageQueue = []; // Prevent duplicate messages
+        this.loadingTimeout = null; // Add timeout tracking
         
         this.init();
     }
@@ -19,7 +18,6 @@ class CoachingAssistant {
         // Topic selection
         document.querySelectorAll('.topic-card').forEach(card => {
             card.addEventListener('click', (e) => {
-                if (this.isLoading) return; // Prevent clicks during loading
                 const topic = e.currentTarget.dataset.topic;
                 // Clear any existing messages before starting new topic
                 document.getElementById('chat-messages').innerHTML = '';
@@ -29,7 +27,6 @@ class CoachingAssistant {
         
         // New session button
         document.getElementById('new-session-btn').addEventListener('click', () => {
-            if (this.isLoading) return; // Prevent clicks during loading
             // Clear chat and reset to welcome screen
             document.getElementById('chat-messages').innerHTML = '';
             this.showWelcomeScreen();
@@ -40,83 +37,122 @@ class CoachingAssistant {
         
         // Send message
         document.getElementById('send-btn').addEventListener('click', () => {
-            if (!this.isLoading) { // Only send if not loading
-                this.sendMessage();
-            }
+            this.sendMessage();
         });
         
         // Enter key to send message
         document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !this.isLoading) {
+            if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.sendMessage();
             }
         });
+        
+        // Action form
+        document.getElementById('action-commitment-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.submitActionCommitment();
+        });
+        
+        // Back to chat button
+        document.getElementById('back-to-chat').addEventListener('click', () => {
+            this.showChatInterface();
+        });
     }
     
-    showLoading(show) {
-        console.log(`🔍 DEBUG: showLoading called with: ${show}`);
-        this.isLoading = show;
+    async startNewSession() {
+        this.showLoading(true);
         
-        // Clear any existing timeout
-        if (this.loadingTimeout) {
-            clearTimeout(this.loadingTimeout);
-            this.loadingTimeout = null;
-        }
-        
-        const loadingDiv = document.getElementById('loading-indicator');
-        const sendBtn = document.getElementById('send-btn');
-        const userInput = document.getElementById('user-input');
-        
-        if (show) {
-            if (loadingDiv) loadingDiv.style.display = 'block';
-            if (sendBtn) {
-                sendBtn.disabled = true;
-                sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Thinking...';
-            }
-            if (userInput) userInput.disabled = true;
+        try {
+            const response = await fetch('/api/start-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: this.userId || this.generateUserId()
+                })
+            });
             
-            // Auto-reset loading after 30 seconds to prevent permanent hang
-            this.loadingTimeout = setTimeout(() => {
-                console.log('⚠️ DEBUG: Auto-resetting loading state after timeout');
-                this.showLoading(false);
-            }, 30000);
-        } else {
-            if (loadingDiv) loadingDiv.style.display = 'none';
-            if (sendBtn) {
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+            const data = await response.json();
+            
+            if (data.session_id) {
+                this.sessionId = data.session_id;
+                this.userId = data.user_id;
+                this.currentStage = 'intake';
+                
+                this.updateSessionStatus('Session Active');
+                // Don't show chat interface or add messages here
+                // Let topic selection handle the first message
             }
-            if (userInput) userInput.disabled = false;
+        } catch (error) {
+            console.error('Error starting session:', error);
+            this.showError('Failed to start session. Please try again.');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+    
+    async selectTopic(topicKey) {
+        if (!this.sessionId) {
+            await this.startNewSession();
         }
         
-        console.log(`🔍 DEBUG: Send button disabled: ${sendBtn?.disabled}`);
-        console.log(`🔍 DEBUG: Loading state set to: ${show} isLoading: ${this.isLoading}`);
+        this.showLoading(true);
+        
+        try {
+            const response = await fetch('/api/send-message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    message: topicKey,
+                    type: 'topic_selection'
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.message) {
+                this.showChatInterface();
+                // Clear any existing messages first
+                document.getElementById('chat-messages').innerHTML = '';
+                
+                // Add a single welcome message
+                this.addMessage('coach', data.message, data.questions);
+                this.updateStageIndicator(data.stage);
+                this.currentStage = data.stage;
+                
+                if (data.emotional_analysis) {
+                    try {
+                        this.showEmotionalAnalysis(data.emotional_analysis);
+                    } catch (error) {
+                        console.log('🔍 DEBUG: Skipping emotional analysis display due to missing HTML elements');
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error selecting topic:', error);
+            this.showError('Failed to process topic selection.');
+        } finally {
+            this.showLoading(false);
+        }
     }
     
     async sendMessage() {
         const input = document.getElementById('user-input');
         const message = input.value.trim();
         
-        if (!message || this.isLoading) {
-            console.log(`🔍 DEBUG: Message blocked - empty: ${!message}, loading: ${this.isLoading}`);
-            return;
-        }
+        if (!message || this.isLoading) return;
         
         console.log('🔍 DEBUG: Sending message:', message);
         console.log('🔍 DEBUG: Session ID:', this.sessionId);
         
-        // Prevent duplicate messages
-        const messageKey = `${this.sessionId}-${message}`;
-        if (this.messageQueue.includes(messageKey)) {
-            console.log('🔍 DEBUG: Duplicate message blocked');
-            return;
-        }
-        this.messageQueue.push(messageKey);
-        
-        // Clear input immediately and show user message
-        input.value = '';
+        // Add user message to chat
         this.addMessage('user', message);
+        input.value = '';
         
         this.showLoading(true);
         
@@ -144,8 +180,17 @@ class CoachingAssistant {
             const data = await response.json();
             console.log('🔍 DEBUG: Response data:', data);
             
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
             if (data.message) {
                 this.addMessage('coach', data.message, data.questions);
+                
+                if (data.personalized_message) {
+                    this.addMessage('coach', data.personalized_message);
+                }
+                
                 this.updateStageIndicator(data.stage);
                 this.currentStage = data.stage;
                 
@@ -176,9 +221,67 @@ class CoachingAssistant {
             });
             this.showError('Failed to send message. Please try again.');
         } finally {
-            // Remove from queue and reset loading
-            const messageKey = `${this.sessionId}-${message}`;
-            this.messageQueue = this.messageQueue.filter(key => key !== messageKey);
+            this.showLoading(false);
+            
+            // Double-check that input is enabled (safety fallback)
+            setTimeout(() => {
+                const inputEl = document.getElementById('user-input');
+                const sendBtn = document.getElementById('send-btn');
+                
+                if (inputEl) {
+                    inputEl.disabled = false;
+                    inputEl.removeAttribute('disabled');
+                    inputEl.style.pointerEvents = 'auto';
+                    inputEl.style.opacity = '1';
+                    console.log('🔒 DEBUG: Safety check - input field re-enabled');
+                }
+                
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    console.log('🔒 DEBUG: Safety check - send button re-enabled');
+                }
+                
+                this.isLoading = false;
+            }, 500);
+        }
+    }
+    
+    async submitActionCommitment() {
+        const formData = {
+            action: document.getElementById('action-input').value,
+            by_when: document.getElementById('deadline-input').value,
+            success_criteria: document.getElementById('success-criteria').value,
+            potential_obstacles: document.getElementById('obstacles').value,
+            support_needed: document.getElementById('support-needed').value
+        };
+        
+        this.showLoading(true);
+        
+        try {
+            const response = await fetch('/api/send-message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    message: JSON.stringify(formData),
+                    type: 'action_commitment'
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.message) {
+                this.showChatInterface();
+                this.addMessage('coach', data.message);
+                this.showActionSummary(data.action_summary);
+                this.updateSessionStatus('Session Complete - ' + new Date().toLocaleDateString());
+            }
+        } catch (error) {
+            console.error('Error submitting action commitment:', error);
+            this.showError('Failed to submit action commitment.');
+        } finally {
             this.showLoading(false);
         }
     }
@@ -248,126 +351,120 @@ class CoachingAssistant {
                 insightsList.appendChild(li);
             });
             insightsDiv.appendChild(insightsList);
-            messageContent.appendChild(insightsList);
+            messageContent.appendChild(insightsDiv);
         }
         
         messageDiv.appendChild(avatar);
         messageDiv.appendChild(messageContent);
         
         messagesContainer.appendChild(messageDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
         
-        // Enhanced scroll behavior with delay
+        // Ensure input remains enabled after adding messages
+        this.ensureInputEnabled();
+        
+        console.log('🔍 DEBUG: Scrolled to bottom');
+    }
+    
+    ensureInputEnabled() {
+        // Safety function to ensure input is always available
+        const inputEl = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        
+        if (inputEl && !this.isLoading) {
+            inputEl.disabled = false;
+            inputEl.removeAttribute('disabled');
+            inputEl.style.pointerEvents = 'auto';
+            inputEl.style.opacity = '1';
+        }
+        
+        if (sendBtn && !this.isLoading) {
+            sendBtn.disabled = false;
+        }
+    }
+    
+    showEmotionalAnalysis(analysis) {
+        const analysisDiv = document.getElementById('emotional-analysis');
+        const sentimentSpan = document.getElementById('sentiment-indicator');
+        const emotionSpan = document.getElementById('primary-emotion');
+        
+        // Skip if elements don't exist in HTML
+        if (!analysisDiv || !sentimentSpan || !emotionSpan) {
+            console.log('🔍 DEBUG: Emotional analysis elements not found in HTML, skipping display');
+            return;
+        }
+        
+        sentimentSpan.textContent = analysis.sentiment;
+        sentimentSpan.className = `sentiment ${analysis.sentiment}`;
+        
+        const primaryEmotion = this.getPrimaryEmotion(analysis.emotions);
+        emotionSpan.textContent = primaryEmotion || 'neutral';
+        
+        analysisDiv.style.display = 'block';
+        
+        // Hide after 5 seconds
         setTimeout(() => {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            console.log('🔍 DEBUG: Scrolled to bottom');
-        }, 100);
+            analysisDiv.style.display = 'none';
+        }, 5000);
     }
     
-    showError(message) {
-        // Show error without affecting loading state
-        this.addMessage('coach', `⚠️ ${message}`);
-        console.log('UI state reset after error:', message);
-    }
-    
-    // ... rest of the methods remain the same as original app.js
-    showWelcomeScreen() {
-        document.getElementById('welcome-screen').style.display = 'flex';
-        document.getElementById('chat-interface').style.display = 'none';
-        this.updateSessionStatus('Ready to start');
-    }
-    
-    showChatInterface() {
-        document.getElementById('welcome-screen').style.display = 'none';
-        document.getElementById('chat-interface').style.display = 'flex';
-        this.updateSessionStatus('Session Active');
-    }
-    
-    async startNewSession() {
-        if (this.isLoading) return;
+    getPrimaryEmotion(emotions) {
+        if (!emotions) return null;
         
-        this.showLoading(true);
+        let maxEmotion = '';
+        let maxScore = 0;
         
-        try {
-            const response = await fetch('/api/start-session', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    user_id: this.userId || null
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.session_id) {
-                this.sessionId = data.session_id;
-                this.userId = data.user_id;
-                
-                this.showChatInterface();
-                
-                if (data.response && data.response.message) {
-                    this.addMessage('coach', data.response.message, data.response.questions);
-                    this.updateStageIndicator(data.response.stage);
-                    this.currentStage = data.response.stage;
-                }
+        Object.entries(emotions).forEach(([emotion, score]) => {
+            if (score > maxScore && score > 0.3) {
+                maxScore = score;
+                maxEmotion = emotion;
             }
-        } catch (error) {
-            console.error('Error starting session:', error);
-            this.showError('Failed to start session. Please try again.');
-        } finally {
-            this.showLoading(false);
+        });
+        
+        return maxEmotion;
+    }
+    
+    showActionPlanningOption() {
+        const input = document.getElementById('user-input');
+        input.placeholder = "Ready to create an action plan? Type 'yes' or continue sharing your thoughts...";
+        
+        // Add action planning button
+        const actionBtn = document.createElement('button');
+        actionBtn.className = 'btn btn-primary';
+        actionBtn.innerHTML = '<i class="fas fa-tasks"></i> Create Action Plan';
+        actionBtn.style.marginTop = '1rem';
+        actionBtn.onclick = () => this.showActionForm();
+        
+        const inputArea = document.querySelector('.input-area');
+        if (!inputArea.querySelector('.action-planning-btn')) {
+            actionBtn.className += ' action-planning-btn';
+            inputArea.appendChild(actionBtn);
         }
     }
     
-    async selectTopic(topicKey) {
-        if (this.isLoading) return;
+    showActionSummary(actionSummary) {
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'action-summary';
+        summaryDiv.innerHTML = `
+            <h4><i class="fas fa-check-circle"></i> Action Commitment</h4>
+            <div class="summary-content">
+                <p><strong>Action:</strong> ${actionSummary.action}</p>
+                <p><strong>Deadline:</strong> ${actionSummary.by_when}</p>
+                <p><strong>Success Criteria:</strong> ${actionSummary.success_criteria}</p>
+                <p><strong>Potential Obstacles:</strong> ${actionSummary.potential_obstacles}</p>
+                <p><strong>Support Needed:</strong> ${actionSummary.support_needed}</p>
+            </div>
+        `;
         
-        if (!this.sessionId) {
-            await this.startNewSession();
-        }
-        
-        this.showLoading(true);
-        
-        try {
-            const response = await fetch('/api/send-message', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    message: topicKey,
-                    type: 'topic_selection'
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.message) {
-                this.showChatInterface();
-                // Clear any existing messages first
-                document.getElementById('chat-messages').innerHTML = '';
-                
-                // Add a single welcome message
-                this.addMessage('coach', data.message, data.questions);
-                this.updateStageIndicator(data.stage);
-                this.currentStage = data.stage;
-                
-                if (data.emotional_analysis) {
-                    try {
-                        this.showEmotionalAnalysis(data.emotional_analysis);
-                    } catch (error) {
-                        console.log('🔍 DEBUG: Skipping emotional analysis display due to missing HTML elements');
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error selecting topic:', error);
-            this.showError('Failed to process topic selection.');
-        } finally {
-            this.showLoading(false);
-        }
+        const messagesContainer = document.getElementById('chat-messages');
+        messagesContainer.appendChild(summaryDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    showInsights(insights) {
+        insights.forEach(insight => {
+            this.addMessage('coach', `💡 Insight: ${insight}`);
+        });
     }
     
     updateStageIndicator(stage) {
@@ -394,27 +491,199 @@ class CoachingAssistant {
         document.getElementById('session-status').textContent = status;
     }
     
-    showEmotionalAnalysis(analysis) {
-        const analysisDiv = document.getElementById('emotional-analysis');
-        const sentimentSpan = document.getElementById('sentiment-indicator');
-        const emotionSpan = document.getElementById('primary-emotion');
+    showWelcomeScreen() {
+        document.getElementById('welcome-screen').style.display = 'flex';
+        document.getElementById('chat-interface').style.display = 'none';
+        document.getElementById('action-form').style.display = 'none';
+    }
+    
+    showChatInterface() {
+        document.getElementById('welcome-screen').style.display = 'none';
+        document.getElementById('chat-interface').style.display = 'flex';
+        document.getElementById('action-form').style.display = 'none';
         
-        // Skip if elements don't exist in HTML
-        if (!analysisDiv || !sentimentSpan || !emotionSpan) {
-            console.log('🔍 DEBUG: Emotional analysis elements not found in HTML, skipping display');
-            return;
+        // Ensure input is fully enabled and ready
+        setTimeout(() => {
+            const inputEl = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            
+            if (inputEl) {
+                // Force enable the input field
+                inputEl.disabled = false;
+                inputEl.removeAttribute('disabled');
+                inputEl.style.pointerEvents = 'auto';
+                inputEl.style.opacity = '1';
+                inputEl.readOnly = false;
+                
+                // Focus on input
+                inputEl.focus();
+                console.log('✅ DEBUG: Chat interface shown, input field enabled and focused');
+            }
+            
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                console.log('✅ DEBUG: Send button enabled');
+            }
+            
+            // Reset loading state
+            this.isLoading = false;
+        }, 100);
+    }
+    
+    showActionForm() {
+        document.getElementById('welcome-screen').style.display = 'none';
+        document.getElementById('chat-interface').style.display = 'none';
+        document.getElementById('action-form').style.display = 'block';
+        
+        // Focus on first input
+        setTimeout(() => {
+            document.getElementById('action-input').focus();
+        }, 100);
+    }
+    
+    showLoading(show) {
+        console.log('🔍 DEBUG: showLoading called with:', show);
+        this.isLoading = show;
+        
+        // Clear any existing timeout
+        if (this.loadingTimeout) {
+            clearTimeout(this.loadingTimeout);
+            this.loadingTimeout = null;
         }
         
-        if (analysis) {
-            sentimentSpan.textContent = analysis.sentiment || 'neutral';
-            emotionSpan.textContent = analysis.primary_emotion || 'engaged';
-            analysisDiv.style.display = 'block';
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) {
+            loadingEl.style.display = show ? 'flex' : 'none';
         }
+        
+        if (show) {
+            // Set a timeout to automatically clear loading after 15 seconds
+            this.loadingTimeout = setTimeout(() => {
+                console.log('⚠️ DEBUG: Loading timeout reached, forcing clear');
+                this.showLoading(false);
+                this.showError('Request timed out. Please try again.');
+            }, 15000);
+        }
+        
+        // Handle send button state
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) {
+            sendBtn.disabled = show;
+            console.log('🔍 DEBUG: Send button disabled:', show);
+        }
+        
+        // Handle input field state
+        const inputEl = document.getElementById('user-input');
+        if (inputEl) {
+            inputEl.disabled = show;
+            console.log('🔍 DEBUG: Loading state set to:', show, 'isLoading:', this.isLoading);
+            
+            if (!show) {
+                // Force re-enable input and make it focusable
+                setTimeout(() => {
+                    inputEl.disabled = false;
+                    inputEl.removeAttribute('disabled');
+                    inputEl.style.pointerEvents = 'auto';
+                    inputEl.style.opacity = '1';
+                    
+                    // Try to focus the input
+                    try {
+                        inputEl.focus();
+                        console.log('✅ DEBUG: Input field re-enabled and focused');
+                    } catch (e) {
+                        console.log('⚠️ DEBUG: Could not focus input:', e);
+                    }
+                }, 200);
+            } else {
+                // When loading, ensure input is clearly disabled
+                inputEl.style.opacity = '0.5';
+                inputEl.blur(); // Remove focus
+            }
+        }
+        
+        console.log('🔍 DEBUG: Loading state changed to:', show);
+    }
+    
+    showError(message) {
+        // Better error display with UI recovery
+        alert(message);
+        
+        // Reset UI state to allow user to try again
+        this.isLoading = false;
+        this.showLoading(false);
+        
+        // Enable send button and clear any stuck states
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) sendBtn.disabled = false;
+        
+        // Focus back on input for retry
+        const input = document.getElementById('user-input');
+        if (input) {
+            setTimeout(() => input.focus(), 100);
+        }
+        
+        // If this is a session-related error, offer to restart
+        if (message.includes('session') || message.includes('Session')) {
+            console.log('🔄 DEBUG: Session error detected, might need session restart');
+            if (confirm('There seems to be a session issue. Would you like to restart the session?')) {
+                this.restartSession();
+            }
+        }
+        
+        console.log('UI state reset after error:', message);
+    }
+    
+    async restartSession() {
+        console.log('🔄 DEBUG: Restarting session...');
+        this.sessionId = null;
+        this.currentStage = 'intake';
+        
+        // Clear chat messages
+        document.getElementById('chat-messages').innerHTML = '';
+        
+        // Start a new session
+        await this.startNewSession();
+        
+        console.log('✅ DEBUG: Session restarted successfully');
+    }
+    
+    generateUserId() {
+        return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
     }
 }
 
-// Initialize the coaching assistant when the page loads
+// Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Initializing Enhanced Coaching Assistant...');
-    window.coachingAssistant = new CoachingAssistant();
+    new CoachingAssistant();
+});
+
+// Add some utility functions for enhanced UX
+function adjustTextareaHeight(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+// Auto-resize textareas
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('textarea').forEach(textarea => {
+        textarea.addEventListener('input', () => adjustTextareaHeight(textarea));
+    });
+});
+
+// Add keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + / to focus on input
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        const input = document.getElementById('user-input');
+        if (input) input.focus();
+    }
+    
+    // Escape to clear input
+    if (e.key === 'Escape') {
+        const input = document.getElementById('user-input');
+        if (input && document.activeElement === input) {
+            input.value = '';
+        }
+    }
 }); 
