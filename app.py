@@ -3,6 +3,7 @@ import sqlite3
 import uuid
 from datetime import datetime
 import json
+import os
 
 app = Flask(__name__)
 
@@ -35,33 +36,200 @@ def init_db():
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
 
+def get_ai_coaching_response(user_message, conversation_history, topic):
+    """Generate AI-powered adaptive coaching response"""
+    try:
+        # Try to import OpenAI
+        import openai
+        
+        # Set API key from environment variable
+        openai.api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not openai.api_key:
+            print("⚠️ No OpenAI API key found, using enhanced fallback")
+            return get_enhanced_fallback_response(user_message, conversation_history, topic)
+        
+        # Build conversation context
+        messages = [
+            {
+                "role": "system", 
+                "content": f"""You are an expert ICF-certified executive coach specializing in {topic}. 
+
+Key coaching principles:
+- Use powerful questions to create awareness
+- Listen actively and reflect what you hear
+- Help the client discover their own insights
+- Focus on action and accountability
+- Be empathetic but challenge thinking patterns
+- Never give direct advice - guide discovery
+
+The client is working on: {topic}
+
+Conversation style:
+- Warm, professional, supportive
+- Ask 1-2 powerful questions per response
+- Acknowledge emotions and patterns
+- Help connect insights to actions
+- Use "I notice..." and "What do you think..." language
+
+Current conversation depth: {len(conversation_history)} exchanges"""
+            }
+        ]
+        
+        # Add conversation history for context
+        for entry in conversation_history[-6:]:  # Last 6 messages for context
+            role = "assistant" if entry['role'] == 'coach' else "user"
+            messages.append({"role": role, "content": entry['content']})
+        
+        # Add current message
+        messages.append({"role": "user", "content": user_message})
+        
+        print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
+        
+        # Make OpenAI request
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+            timeout=10  # 10 second timeout
+        )
+        
+        ai_message = response.choices[0].message.content.strip()
+        
+        # Extract questions from the response (simple heuristic)
+        lines = ai_message.split('\n')
+        questions = [line.strip('- ').strip() for line in lines if '?' in line][-2:]  # Last 2 questions
+        
+        # If no questions found, generate some
+        if not questions:
+            questions = [
+                "What patterns are you noticing as we explore this?",
+                "What feels most important for you to understand about this situation?"
+            ]
+        
+        print(f"✅ AI DEBUG: OpenAI response generated successfully")
+        return {
+            'message': ai_message,
+            'questions': questions,
+            'ai_powered': True
+        }
+        
+    except ImportError:
+        print("⚠️ OpenAI not available, using enhanced fallback")
+        return get_enhanced_fallback_response(user_message, conversation_history, topic)
+    except Exception as e:
+        print(f"❌ AI DEBUG: OpenAI error: {e}")
+        return get_enhanced_fallback_response(user_message, conversation_history, topic)
+
+def get_enhanced_fallback_response(user_message, conversation_history, topic):
+    """Enhanced fallback with conversation context awareness"""
+    user_lower = user_message.lower()
+    conversation_depth = len(conversation_history)
+    
+    # Analyze previous conversation for context
+    previous_topics = []
+    for entry in conversation_history[-3:]:  # Last 3 messages
+        content = entry['content'].lower()
+        if 'fear' in content or 'scared' in content:
+            previous_topics.append('fear')
+        if 'stress' in content or 'anxiety' in content:
+            previous_topics.append('stress')
+        if 'confidence' in content:
+            previous_topics.append('confidence')
+    
+    # Context-aware responses based on conversation progression
+    if conversation_depth <= 2:
+        # Early conversation - establish trust and understanding
+        if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
+            return {
+                'message': "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?",
+                'questions': [
+                    "What tasks do you find yourself putting off most often?",
+                    "What might be underneath the procrastination - fear, perfectionism, or something else?"
+                ]
+            }
+    
+    elif conversation_depth <= 4:
+        # Mid conversation - explore deeper patterns
+        if any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
+            if 'fear' in previous_topics:
+                return {
+                    'message': "I'm noticing fear has come up multiple times in our conversation. This suggests it's playing a central role in your experience. What do you think this fear is ultimately trying to protect you from?",
+                    'questions': [
+                        "If this fear wasn't present, what would you do differently?",
+                        "What would you need to feel more equipped to handle potential failure?"
+                    ]
+                }
+            else:
+                return {
+                    'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
+                    'questions': [
+                        "When you imagine completing the task successfully, what comes up for you?",
+                        "What would it mean about you if you did fail at this task?"
+                    ]
+                }
+    
+    else:
+        # Later conversation - focus on insights and action
+        if any(word in user_lower for word in ['confidence', 'self-confidence', 'doubt', 'self-doubt', 'losing', 'loosing']):
+            return {
+                'message': f"Given everything we've explored - from {', '.join(set(previous_topics))} to now discussing confidence - I'm curious what insights are emerging for you. What's becoming clearer about your relationship with these challenging tasks?",
+                'questions': [
+                    "What would be one small step that could help you build evidence of your capability?",
+                    "How might you apply what you're learning here to future situations?"
+                ]
+            }
+    
+    # Enhanced adaptive responses with context
+    if any(word in user_lower for word in ['stress', 'stressed', 'anxiety', 'anxious', 'overwhelm', 'overwhelmed']):
+        context_text = " I'm also noticing this connects to the fear we discussed earlier." if 'fear' in previous_topics else ""
+        return {
+            'message': f"I can sense the weight of stress and anxiety you're carrying.{context_text} What do you notice happens in your body when you think about these complex tasks?",
+            'questions': [
+                "What would it feel like to approach these tasks from a place of calm rather than stress?",
+                "What support or resources might help you manage this anxiety?"
+            ]
+        }
+    
+    # Default with conversation awareness
+    theme_text = f" building on what we've discussed about {' and '.join(set(previous_topics))}" if previous_topics else ""
+    return {
+        'message': f"I can hear the depth of what you're sharing{theme_text}. What feels most significant to you right now?",
+        'questions': [
+            "What patterns are you noticing as we talk about this?",
+            "What would you most like to understand or change about this situation?"
+        ]
+    }
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/api/start-session', methods=['POST'])
 def start_session():
-    """Start a new coaching session - MINIMAL VERSION"""
+    """Start a new coaching session - AI POWERED VERSION"""
     try:
-        print(f"🔍 MINIMAL START_SESSION: Starting new session...")
+        print(f"🔍 AI START_SESSION: Starting new session...")
         
         user_id = str(uuid.uuid4())
         session_id = str(uuid.uuid4())
         
-        print(f"🔍 MINIMAL START_SESSION: user_id={user_id}, session_id={session_id}")
+        print(f"🔍 AI START_SESSION: user_id={user_id}, session_id={session_id}")
         
-        # Store in memory for now
+        # Store in memory with conversation history
         sessions[session_id] = {
             'user_id': user_id,
             'session_id': session_id,
             'stage': 'intake',
             'topic': None,
+            'conversation_history': [],
             'created_at': datetime.now().isoformat()
         }
         
         # Simple response
         response = {
-            'message': 'Welcome to your coaching session! What would you like to work on today?',
+            'message': 'Welcome to your coaching session! I\'m here to support you in exploring what\'s important to you. This is a confidential space where you can share openly.',
             'questions': [
                 'What brings you to coaching right now?',
                 'What would you like to explore in this session?', 
@@ -71,7 +239,7 @@ def start_session():
             'available_topics': ['performance_improvement', 'career_development', 'work_life_balance', 'leadership_growth']
         }
         
-        print(f"✅ MINIMAL START_SESSION: Session created successfully")
+        print(f"✅ AI START_SESSION: Session created successfully")
         return jsonify({
             'session_id': session_id,
             'user_id': user_id,
@@ -79,23 +247,23 @@ def start_session():
         })
         
     except Exception as e:
-        print(f"❌ MINIMAL START_SESSION: Error: {e}")
+        print(f"❌ AI START_SESSION: Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Failed to start session: {str(e)}'}), 500
 
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
-    """Process user message - MINIMAL VERSION"""
+    """Process user message - AI ADAPTIVE VERSION"""
     try:
-        print(f"🔍 MINIMAL SEND_MESSAGE: Starting...")
+        print(f"🔍 AI SEND_MESSAGE: Starting...")
         
         data = request.json
         session_id = data.get('session_id')
         user_message = data.get('message')
         message_type = data.get('type', 'text')
         
-        print(f"🔍 MINIMAL SEND_MESSAGE: session_id={session_id}, message='{user_message}', type={message_type}")
+        print(f"🔍 AI SEND_MESSAGE: session_id={session_id}, message='{user_message}', type={message_type}")
         
         if not session_id or not user_message:
             return jsonify({'error': 'Missing session_id or message'}), 400
@@ -104,9 +272,18 @@ def send_message():
         if session_id not in sessions:
             return jsonify({'error': 'Session not found'}), 404
         
-        # Simple response based on message type
+        session = sessions[session_id]
+        
+        # Add user message to conversation history
+        session['conversation_history'].append({
+            'role': 'user',
+            'content': user_message,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        # Process different message types
         if message_type == 'topic_selection':
-            print(f"🔍 MINIMAL SEND_MESSAGE: Processing topic selection: {user_message}")
+            print(f"🔍 AI SEND_MESSAGE: Processing topic selection: {user_message}")
             
             topic_responses = {
                 'performance_improvement': {
@@ -145,110 +322,45 @@ def send_message():
             })
             
             # Update session
-            sessions[session_id]['topic'] = user_message
-            sessions[session_id]['stage'] = 'exploration'
+            session['topic'] = user_message
+            session['stage'] = 'exploration'
             
         else:
-            # Handle regular conversation
-            print(f"🔍 MINIMAL SEND_MESSAGE: Processing regular message")
+            # Use AI-powered adaptive response
+            print(f"🔍 AI SEND_MESSAGE: Generating AI response...")
             
-            # Enhanced keyword-based response system
-            user_lower = user_message.lower()
+            topic = session.get('topic', 'performance improvement')
+            conversation_history = session.get('conversation_history', [])
             
-            # Procrastination-related responses
-            if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
-                response = {
-                    'message': "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?",
-                    'questions': [
-                        "What tasks do you find yourself putting off most often?",
-                        "What might be underneath the procrastination - fear, perfectionism, or something else?"
-                    ]
-                }
-            
-            # Fear and failure-related responses
-            elif any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
-                response = {
-                    'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
-                    'questions': [
-                        "When you imagine completing the task successfully, what comes up for you?",
-                        "What would it mean about you if you did fail at this task?",
-                        "How has this fear served you in the past, and how is it limiting you now?"
-                    ]
-                }
-            
-            # Stress and anxiety responses
-            elif any(word in user_lower for word in ['stress', 'stressed', 'anxiety', 'anxious', 'overwhelm', 'overwhelmed']):
-                response = {
-                    'message': "I can sense the weight of stress and anxiety you're carrying. These feelings often intensify when we're caught in cycles of avoidance. What do you notice happens in your body when you think about these complex tasks?",
-                    'questions': [
-                        "What would it feel like to approach these tasks from a place of calm rather than stress?",
-                        "What support or resources might help you manage this anxiety?",
-                        "How do you typically care for yourself when stress levels are high?"
-                    ]
-                }
-            
-            # Self-confidence and self-doubt responses  
-            elif any(word in user_lower for word in ['confidence', 'self-confidence', 'doubt', 'self-doubt', 'losing', 'loosing']):
-                response = {
-                    'message': "It sounds like this pattern is affecting your sense of self-confidence, which can create a challenging cycle. When we avoid tasks, it can reinforce doubt, but your awareness of this pattern shows real insight. What do you remember about times when you did feel confident in your abilities?",
-                    'questions': [
-                        "What past accomplishments remind you of your actual capabilities?",
-                        "What would you tell a good friend who was experiencing this same self-doubt?",
-                        "What small step could help you rebuild that sense of confidence?"
-                    ]
-                }
-            
-            # Complex task and capability responses
-            elif any(word in user_lower for word in ['complex', 'complicated', 'difficult', 'challenging', 'task', 'complete', 'successfully']):
-                response = {
-                    'message': "Complex tasks can feel overwhelming, especially when we view them as one massive challenge. I'm curious about how you typically approach breaking down complexity. What's your relationship with taking things step by step?",
-                    'questions': [
-                        "What would make this complex task feel more manageable?",
-                        "How do you typically handle complexity in areas where you feel confident?",
-                        "What would be the smallest possible first step you could take?"
-                    ]
-                }
-            
-            # General supportive response with better personalization
-            else:
-                # Extract key words for more personalized response
-                key_concepts = []
-                if 'work' in user_lower or 'job' in user_lower:
-                    key_concepts.append('work')
-                if 'time' in user_lower:
-                    key_concepts.append('time management')
-                if 'feel' in user_lower or 'feeling' in user_lower:
-                    key_concepts.append('emotional awareness')
-                
-                concept_text = f" around {' and '.join(key_concepts)}" if key_concepts else ""
-                
-                response = {
-                    'message': f"I can hear the depth of what you're sharing{concept_text}. There's real wisdom in being able to articulate your experience so clearly. What feels most important for you to explore further right now?",
-                    'questions': [
-                        "What patterns are you noticing as we talk about this?",
-                        "How has this been affecting other areas of your life?",
-                        "What would you most like to understand or change about this situation?"
-                    ]
-                }
+            response = get_ai_coaching_response(user_message, conversation_history, topic)
+            print(f"🔍 AI SEND_MESSAGE: AI response generated: {response.get('ai_powered', False)}")
         
+        # Add coach response to history
+        session['conversation_history'].append({
+            'role': 'coach',
+            'content': response['message'],
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        # Update response with standard fields
         response.update({
             'stage': 'exploration',
             'competency_applied': 'active_listening',
-            'ai_confidence': 0.8,
+            'ai_confidence': 0.9,
             'demo_mode': True,
             'emotional_analysis': {'primary_emotion': 'engaged', 'intensity': 0.7}
         })
         
-        print(f"✅ MINIMAL SEND_MESSAGE: Response generated successfully")
+        print(f"✅ AI SEND_MESSAGE: Response generated successfully")
         return jsonify(response)
         
     except Exception as e:
-        print(f"❌ MINIMAL SEND_MESSAGE: Error: {e}")
+        print(f"❌ AI SEND_MESSAGE: Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting minimal coaching app...")
+    print("🚀 Starting AI-powered adaptive coaching app...")
     init_db()
     app.run(host='0.0.0.0', port=5000, debug=True) 
