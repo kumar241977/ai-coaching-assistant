@@ -99,6 +99,16 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         
         # Use new OpenAI client syntax only - Clean initialization
         try:
+            # Clear any proxy-related environment variables that might interfere
+            env_backup = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']
+            for var in proxy_vars:
+                if var in os.environ:
+                    env_backup[var] = os.environ[var]
+                    del os.environ[var]
+            
+            print("🧹 Cleared proxy environment variables for clean OpenAI initialization")
+            
             # Create OpenAI client with clean parameters
             client = openai.OpenAI(api_key=openai_api_key)
             
@@ -109,6 +119,10 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 temperature=0.7
             )
             
+            # Restore environment variables
+            for var, value in env_backup.items():
+                os.environ[var] = value
+            
             ai_message = response.choices[0].message.content.strip()
             print("✅ AI DEBUG: OpenAI response generated successfully")
             
@@ -116,36 +130,63 @@ Current conversation depth: {len(conversation_history)} exchanges"""
             print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
             print(f"❌ AI DEBUG: Error type: {type(openai_error).__name__}")
             
+            # Restore environment variables in case of error
+            for var, value in env_backup.items():
+                os.environ[var] = value
+            
             # Provide specific error guidance
             error_str = str(openai_error).lower()
             if "authentication" in error_str or "api_key" in error_str:
                 print("💡 Issue: API key authentication failed")
+                return get_enhanced_fallback_response(user_message, conversation_history, topic)
             elif "quota" in error_str or "billing" in error_str:
                 print("💡 Issue: Insufficient quota or billing problem")
+                return get_enhanced_fallback_response(user_message, conversation_history, topic)
             elif "rate_limit" in error_str:
                 print("💡 Issue: Rate limit exceeded")
+                return get_enhanced_fallback_response(user_message, conversation_history, topic)
             elif "proxies" in error_str or "proxy" in error_str or "unexpected keyword" in error_str:
-                print("💡 Issue: Client initialization conflict - using minimal approach")
-                # Try ultra-minimal client initialization
+                print("💡 Issue: Persistent proxy conflict - trying HTTP requests approach")
+                
+                # Final fallback: Use direct HTTP requests instead of OpenAI client
                 try:
-                    from openai import OpenAI
-                    minimal_client = OpenAI(api_key=openai_api_key)
+                    import requests
+                    import json
                     
-                    response = minimal_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=messages,
-                        max_tokens=200,
-                        temperature=0.7
+                    headers = {
+                        'Authorization': f'Bearer {openai_api_key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    data = {
+                        'model': 'gpt-3.5-turbo',
+                        'messages': messages,
+                        'max_tokens': 200,
+                        'temperature': 0.7
+                    }
+                    
+                    print("🌐 Trying direct HTTP request to OpenAI API")
+                    http_response = requests.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        headers=headers,
+                        json=data,
+                        timeout=15
                     )
                     
-                    ai_message = response.choices[0].message.content.strip()
-                    print("✅ AI DEBUG: Minimal OpenAI client successful")
-                    
-                except Exception as min_error:
-                    print(f"❌ AI DEBUG: Minimal client also failed: {min_error}")
+                    if http_response.status_code == 200:
+                        result = http_response.json()
+                        ai_message = result['choices'][0]['message']['content'].strip()
+                        print("✅ AI DEBUG: Direct HTTP request successful")
+                    else:
+                        print(f"❌ HTTP request failed: {http_response.status_code} - {http_response.text}")
+                        return get_enhanced_fallback_response(user_message, conversation_history, topic)
+                        
+                except Exception as http_error:
+                    print(f"❌ AI DEBUG: HTTP request also failed: {http_error}")
                     return get_enhanced_fallback_response(user_message, conversation_history, topic)
             else:
                 print(f"💡 Issue: {openai_error}")
+                return get_enhanced_fallback_response(user_message, conversation_history, topic)
             
             # If we haven't returned yet, fall back to enhanced responses
             if 'ai_message' not in locals():
