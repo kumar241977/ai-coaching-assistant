@@ -1,1 +1,1 @@
-web: python download_nltk_data.py && gunicorn app:app 
+   web: gunicorn app:app
