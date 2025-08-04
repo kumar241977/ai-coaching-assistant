@@ -54,6 +54,8 @@ def get_ai_coaching_response(user_message, conversation_history, topic):
             print("⚠️ No OpenAI API key found, using enhanced fallback")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
+        print(f"🔑 OpenAI API key configured: {openai.api_key[:10]}...{openai.api_key[-4:]}")
+        
         # Build conversation context
         messages = [
             {
@@ -90,23 +92,10 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         messages.append({"role": "user", "content": user_message})
         
         print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
+        print(f"🤖 AI DEBUG: Using NEW OpenAI client syntax (v1.0+)")
         
-        # Make OpenAI request with better error handling
+        # Use new OpenAI client syntax only
         try:
-            # Try using the older OpenAI syntax first for compatibility
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                max_tokens=200,
-                temperature=0.7,
-                timeout=10
-            )
-            
-            ai_message = response.choices[0].message.content.strip()
-            
-        except AttributeError:
-            # If old syntax fails, try new client syntax
-            print("🔄 Trying new OpenAI client syntax...")
             client = openai.OpenAI(api_key=openai.api_key)
             
             response = client.chat.completions.create(
@@ -114,14 +103,28 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 messages=messages,
                 max_tokens=200,
                 temperature=0.7,
-                timeout=10
+                timeout=15
             )
             
             ai_message = response.choices[0].message.content.strip()
+            print("✅ AI DEBUG: OpenAI response generated successfully")
             
         except Exception as openai_error:
             print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
-            # Immediately fall back to enhanced responses
+            print(f"❌ AI DEBUG: Error type: {type(openai_error).__name__}")
+            
+            # Provide specific error guidance
+            error_str = str(openai_error).lower()
+            if "authentication" in error_str or "api_key" in error_str:
+                print("💡 Issue: API key authentication failed")
+            elif "quota" in error_str or "billing" in error_str:
+                print("💡 Issue: Insufficient quota or billing problem")
+            elif "rate_limit" in error_str:
+                print("💡 Issue: Rate limit exceeded")
+            else:
+                print(f"💡 Issue: {openai_error}")
+            
+            # Fall back to enhanced responses
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
         # Extract questions from the response (simple heuristic)
@@ -135,7 +138,7 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 "What feels most important for you to understand about this situation?"
             ]
         
-        print(f"✅ AI DEBUG: OpenAI response generated successfully")
+        print(f"✅ AI DEBUG: OpenAI response generated successfully with {len(questions)} questions")
         return {
             'message': ai_message,
             'questions': questions,
@@ -143,8 +146,10 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         }
         
     except Exception as e:
-        print(f"❌ AI DEBUG: OpenAI error: {e}")
-        print(f"❌ AI DEBUG: Falling back to enhanced responses")
+        print(f"❌ AI DEBUG: Unexpected error in OpenAI function: {e}")
+        print(f"❌ AI DEBUG: Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return get_enhanced_fallback_response(user_message, conversation_history, topic)
 
 def get_enhanced_fallback_response(user_message, conversation_history, topic):
@@ -330,7 +335,9 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
             ]
         }
     else:
-        theme_text = f" building on what we've discussed about {', '.join(set(previous_topics)[:2])}" if previous_topics else ""
+        # Fix the set slicing bug by converting to list first
+        unique_topics = list(set(previous_topics))[:2]
+        theme_text = f" building on what we've discussed about {', '.join(unique_topics)}" if unique_topics else ""
         return {
             'message': f"I can hear the depth of what you're sharing{theme_text}. What insight or awareness is emerging for you as we talk about this?",
             'questions': [
