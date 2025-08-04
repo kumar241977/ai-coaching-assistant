@@ -152,10 +152,11 @@ def send_message():
             # Handle regular conversation
             print(f"🔍 MINIMAL SEND_MESSAGE: Processing regular message")
             
-            # Simple keyword-based response
+            # Enhanced keyword-based response system
             user_lower = user_message.lower()
             
-            if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay']):
+            # Procrastination-related responses
+            if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
                 response = {
                     'message': "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?",
                     'questions': [
@@ -163,12 +164,70 @@ def send_message():
                         "What might be underneath the procrastination - fear, perfectionism, or something else?"
                     ]
                 }
-            else:
+            
+            # Fear and failure-related responses
+            elif any(word in user_lower for word in ['fear', 'scared', 'afraid', 'failure', 'fail', 'worried']):
                 response = {
-                    'message': f"Thank you for sharing that with me: '{user_message}'. I can sense this is important to you. What stands out most to you as we explore this together?",
+                    'message': "I can hear that fear is playing a significant role in your experience. Fear of failure is incredibly common, and it takes real courage to name it. What do you think this fear is trying to protect you from?",
                     'questions': [
-                        "What patterns are you noticing?",
-                        "How has this been affecting other areas of your life?"
+                        "When you imagine completing the task successfully, what comes up for you?",
+                        "What would it mean about you if you did fail at this task?",
+                        "How has this fear served you in the past, and how is it limiting you now?"
+                    ]
+                }
+            
+            # Stress and anxiety responses
+            elif any(word in user_lower for word in ['stress', 'stressed', 'anxiety', 'anxious', 'overwhelm', 'overwhelmed']):
+                response = {
+                    'message': "I can sense the weight of stress and anxiety you're carrying. These feelings often intensify when we're caught in cycles of avoidance. What do you notice happens in your body when you think about these complex tasks?",
+                    'questions': [
+                        "What would it feel like to approach these tasks from a place of calm rather than stress?",
+                        "What support or resources might help you manage this anxiety?",
+                        "How do you typically care for yourself when stress levels are high?"
+                    ]
+                }
+            
+            # Self-confidence and self-doubt responses  
+            elif any(word in user_lower for word in ['confidence', 'self-confidence', 'doubt', 'self-doubt', 'losing', 'loosing']):
+                response = {
+                    'message': "It sounds like this pattern is affecting your sense of self-confidence, which can create a challenging cycle. When we avoid tasks, it can reinforce doubt, but your awareness of this pattern shows real insight. What do you remember about times when you did feel confident in your abilities?",
+                    'questions': [
+                        "What past accomplishments remind you of your actual capabilities?",
+                        "What would you tell a good friend who was experiencing this same self-doubt?",
+                        "What small step could help you rebuild that sense of confidence?"
+                    ]
+                }
+            
+            # Complex task and capability responses
+            elif any(word in user_lower for word in ['complex', 'complicated', 'difficult', 'challenging', 'task', 'complete', 'successfully']):
+                response = {
+                    'message': "Complex tasks can feel overwhelming, especially when we view them as one massive challenge. I'm curious about how you typically approach breaking down complexity. What's your relationship with taking things step by step?",
+                    'questions': [
+                        "What would make this complex task feel more manageable?",
+                        "How do you typically handle complexity in areas where you feel confident?",
+                        "What would be the smallest possible first step you could take?"
+                    ]
+                }
+            
+            # General supportive response with better personalization
+            else:
+                # Extract key words for more personalized response
+                key_concepts = []
+                if 'work' in user_lower or 'job' in user_lower:
+                    key_concepts.append('work')
+                if 'time' in user_lower:
+                    key_concepts.append('time management')
+                if 'feel' in user_lower or 'feeling' in user_lower:
+                    key_concepts.append('emotional awareness')
+                
+                concept_text = f" around {' and '.join(key_concepts)}" if key_concepts else ""
+                
+                response = {
+                    'message': f"I can hear the depth of what you're sharing{concept_text}. There's real wisdom in being able to articulate your experience so clearly. What feels most important for you to explore further right now?",
+                    'questions': [
+                        "What patterns are you noticing as we talk about this?",
+                        "How has this been affecting other areas of your life?",
+                        "What would you most like to understand or change about this situation?"
                     ]
                 }
         
