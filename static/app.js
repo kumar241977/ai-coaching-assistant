@@ -4,6 +4,7 @@ class CoachingAssistant {
         this.userId = null;
         this.currentStage = 'intake';
         this.isLoading = false;
+        this.loadingTimeout = null; // Add timeout tracking
         
         this.init();
     }
@@ -476,12 +477,50 @@ class CoachingAssistant {
     }
     
     showLoading(show) {
+        console.log('🔍 DEBUG: showLoading called with:', show);
         this.isLoading = show;
-        document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        
+        // Clear any existing timeout
+        if (this.loadingTimeout) {
+            clearTimeout(this.loadingTimeout);
+            this.loadingTimeout = null;
+        }
+        
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) {
+            loadingEl.style.display = show ? 'flex' : 'none';
+        }
+        
+        if (show) {
+            // Set a timeout to automatically clear loading after 30 seconds
+            this.loadingTimeout = setTimeout(() => {
+                console.log('⚠️ DEBUG: Loading timeout reached, forcing clear');
+                this.showLoading(false);
+                this.showError('Request timed out. Please try again.');
+            }, 30000);
+        }
         
         // Disable/enable send button
         const sendBtn = document.getElementById('send-btn');
-        sendBtn.disabled = show;
+        if (sendBtn) {
+            sendBtn.disabled = show;
+            console.log('🔍 DEBUG: Send button disabled:', show);
+        }
+        
+        // Disable/enable input
+        const inputEl = document.getElementById('user-input');
+        if (inputEl) {
+            inputEl.disabled = show;
+            if (!show) {
+                // Re-enable input and focus after delay
+                setTimeout(() => {
+                    inputEl.disabled = false;
+                    inputEl.focus();
+                }, 100);
+            }
+        }
+        
+        console.log('🔍 DEBUG: Loading state set to:', show, 'isLoading:', this.isLoading);
     }
     
     showError(message) {
