@@ -152,8 +152,11 @@ class ConversationFlowEngine:
             def _get_exploration_response(self, user_input):
                 # Analyze user input for emotional content and themes
                 user_lower = user_input.lower() if user_input else ""
+                print(f"🔍 FALLBACK DEBUG: Processing user input: '{user_input}'")
+                print(f"🔍 FALLBACK DEBUG: Lowercase input: '{user_lower}'")
                 
                 if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding']):
+                    print(f"🔍 FALLBACK DEBUG: Detected procrastination keywords!")
                     return {
                         "message": "I hear that procrastination is showing up as a significant challenge for you. That's something many people struggle with, and it takes courage to name it directly. What do you notice about when procrastination tends to happen most for you?",
                         "questions": [
@@ -166,6 +169,7 @@ class ConversationFlowEngine:
                         "demo_mode": True
                     }
                 elif any(word in user_lower for word in ['stressed', 'overwhelmed', 'pressure']):
+                    print(f"🔍 FALLBACK DEBUG: Detected stress keywords!")
                     return {
                         "message": "I can hear that you're feeling stressed and overwhelmed. That sounds really challenging. What do you think is contributing most to that feeling of pressure?",
                         "questions": [
@@ -178,6 +182,7 @@ class ConversationFlowEngine:
                         "demo_mode": True
                     }
                 elif any(word in user_lower for word in ['confused', 'unclear', 'not sure']):
+                    print(f"🔍 FALLBACK DEBUG: Detected confusion keywords!")
                     return {
                         "message": "It sounds like there's some uncertainty here, which is completely understandable. What aspect would you like to get clearer on first?",
                         "questions": [
@@ -190,8 +195,9 @@ class ConversationFlowEngine:
                         "demo_mode": True
                     }
                 elif any(word in user_lower for word in ['focus', 'distracted', 'concentration']):
+                    print(f"🔍 FALLBACK DEBUG: Detected focus keywords!")
                     return {
-                        "message": "Focus and concentration challenges can really impact how we feel about our performance. It sounds like this is affecting you in meaningful ways. What have you noticed about your focus patterns?",
+                        "message": "Focus and concentration challenges can really impact how we feel about your performance. It sounds like this is affecting you in meaningful ways. What have you noticed about your focus patterns?",
                         "questions": [
                             "When do you find your focus is strongest?",
                             "What distractions tend to pull you away most often?",
@@ -202,6 +208,7 @@ class ConversationFlowEngine:
                         "demo_mode": True
                     }
                 else:
+                    print(f"🔍 FALLBACK DEBUG: No specific keywords detected, using generic response")
                     return {
                         "message": f"Thank you for sharing that with me. I can sense this is important to you - '{user_input}'. What stands out most to you as we explore this together?",
                         "questions": [
@@ -355,16 +362,23 @@ class ConversationFlowEngine:
     
     def generate_exploration_response(self, state: ConversationState, user_input: str) -> Dict[str, Any]:
         """Generate response for exploration stage using OpenAI intelligent coaching"""
+        print(f"🔍 DEBUG: generate_exploration_response called")
+        print(f"🔍 DEBUG: User input: '{user_input}'")
+        print(f"🔍 DEBUG: Current topic: {state.topic.name if state.topic else 'None'}")
+        
         # Add user input to conversation history
         self._add_to_history(state, "user", user_input)
         
         # Determine which competency to apply based on conversation depth
         conversation_depth = len([msg for msg in state.conversation_history if msg["role"] == "user"])
+        print(f"🔍 DEBUG: Conversation depth: {conversation_depth}")
         
         if conversation_depth <= 2:
             icf_competency = "active_listening"
         else:
             icf_competency = "powerful_questioning"
+        
+        print(f"🔍 DEBUG: ICF competency: {icf_competency}")
         
         # Create coaching context for OpenAI
         coaching_context = CoachingContext(
@@ -376,8 +390,14 @@ class ConversationFlowEngine:
             session_goals=[]  # Could be populated based on user's stated goals
         )
         
+        print(f"🔍 DEBUG: Coaching context topic: {coaching_context.topic}")
+        
         # Generate intelligent response using OpenAI
-        ai_response = self._get_openai_coach().generate_coaching_response(coaching_context, user_input)
+        coach = self._get_openai_coach()
+        print(f"🔍 DEBUG: Coach type: {type(coach).__name__}")
+        
+        ai_response = coach.generate_coaching_response(coaching_context, user_input)
+        print(f"🔍 DEBUG: AI response: {ai_response}")
         
         return {
             "message": ai_response["message"],
