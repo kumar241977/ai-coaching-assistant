@@ -15,7 +15,10 @@ app = Flask(__name__)
 CORS(app)
 
 # Configure OpenAI API key from environment variable
-openai.api_key = os.getenv('OPENAI_API_KEY')
+openai_api_key = os.getenv('OPENAI_API_KEY')
+
+# Don't set global api_key to avoid conflicts with new client syntax
+# openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Simple in-memory storage for testing
 sessions = {}
@@ -50,11 +53,11 @@ def get_ai_coaching_response(user_message, conversation_history, topic):
     """Generate AI-powered adaptive coaching response"""
     try:
         # Check if OpenAI API key is available
-        if not openai.api_key:
+        if not openai_api_key:
             print("⚠️ No OpenAI API key found, using enhanced fallback")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
-        print(f"🔑 OpenAI API key configured: {openai.api_key[:10]}...{openai.api_key[-4:]}")
+        print(f"🔑 OpenAI API key configured: {openai_api_key[:10]}...{openai_api_key[-4:]}")
         
         # Build conversation context
         messages = [
@@ -94,16 +97,16 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
         print(f"🤖 AI DEBUG: Using NEW OpenAI client syntax (v1.0+)")
         
-        # Use new OpenAI client syntax only
+        # Use new OpenAI client syntax only - Clean initialization
         try:
-            client = openai.OpenAI(api_key=openai.api_key)
+            # Create OpenAI client with clean parameters
+            client = openai.OpenAI(api_key=openai_api_key)
             
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=200,
-                temperature=0.7,
-                timeout=15
+                temperature=0.7
             )
             
             ai_message = response.choices[0].message.content.strip()
@@ -121,11 +124,32 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 print("💡 Issue: Insufficient quota or billing problem")
             elif "rate_limit" in error_str:
                 print("💡 Issue: Rate limit exceeded")
+            elif "proxies" in error_str or "proxy" in error_str or "unexpected keyword" in error_str:
+                print("💡 Issue: Client initialization conflict - using minimal approach")
+                # Try ultra-minimal client initialization
+                try:
+                    from openai import OpenAI
+                    minimal_client = OpenAI(api_key=openai_api_key)
+                    
+                    response = minimal_client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=messages,
+                        max_tokens=200,
+                        temperature=0.7
+                    )
+                    
+                    ai_message = response.choices[0].message.content.strip()
+                    print("✅ AI DEBUG: Minimal OpenAI client successful")
+                    
+                except Exception as min_error:
+                    print(f"❌ AI DEBUG: Minimal client also failed: {min_error}")
+                    return get_enhanced_fallback_response(user_message, conversation_history, topic)
             else:
                 print(f"💡 Issue: {openai_error}")
             
-            # Fall back to enhanced responses
-            return get_enhanced_fallback_response(user_message, conversation_history, topic)
+            # If we haven't returned yet, fall back to enhanced responses
+            if 'ai_message' not in locals():
+                return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
         # Extract questions from the response (simple heuristic)
         lines = ai_message.split('\n')
@@ -356,7 +380,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'app': 'AI Coaching Assistant - Adaptive Version',
-        'openai_configured': bool(openai.api_key),
+        'openai_configured': bool(openai_api_key),
         'active_sessions': len(sessions),
         'timestamp': datetime.now().isoformat()
     })
