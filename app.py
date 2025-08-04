@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import sqlite3
 import uuid
 from datetime import datetime
@@ -11,6 +12,7 @@ import openai
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
 # Configure OpenAI API key from environment variable
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -89,24 +91,38 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         
         print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
         
-        # Make OpenAI request with timeout protection
+        # Make OpenAI request with better error handling
         try:
-            # Create OpenAI client
+            # Try using the older OpenAI syntax first for compatibility
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                max_tokens=200,
+                temperature=0.7,
+                timeout=10
+            )
+            
+            ai_message = response.choices[0].message.content.strip()
+            
+        except AttributeError:
+            # If old syntax fails, try new client syntax
+            print("🔄 Trying new OpenAI client syntax...")
             client = openai.OpenAI(api_key=openai.api_key)
             
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
-                max_tokens=200,  # Reduced for faster response
+                max_tokens=200,
                 temperature=0.7,
-                timeout=10  # Reasonable timeout
+                timeout=10
             )
+            
+            ai_message = response.choices[0].message.content.strip()
+            
         except Exception as openai_error:
             print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
             # Immediately fall back to enhanced responses
-            raise openai_error
-        
-        ai_message = response.choices[0].message.content.strip()
+            return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
         # Extract questions from the response (simple heuristic)
         lines = ai_message.split('\n')
@@ -126,11 +142,9 @@ Current conversation depth: {len(conversation_history)} exchanges"""
             'ai_powered': True
         }
         
-    except ImportError:
-        print("⚠️ OpenAI not available, using enhanced fallback")
-        return get_enhanced_fallback_response(user_message, conversation_history, topic)
     except Exception as e:
         print(f"❌ AI DEBUG: OpenAI error: {e}")
+        print(f"❌ AI DEBUG: Falling back to enhanced responses")
         return get_enhanced_fallback_response(user_message, conversation_history, topic)
 
 def get_enhanced_fallback_response(user_message, conversation_history, topic):
@@ -262,6 +276,17 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
 def index():
     return render_template('index.html')
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for debugging"""
+    return jsonify({
+        'status': 'healthy',
+        'app': 'AI Coaching Assistant - Adaptive Version',
+        'openai_configured': bool(openai.api_key),
+        'active_sessions': len(sessions),
+        'timestamp': datetime.now().isoformat()
+    })
+
 @app.route('/api/start-session', methods=['POST'])
 def start_session():
     """Start a new coaching session - AI POWERED VERSION"""
@@ -314,6 +339,11 @@ def send_message():
     try:
         print(f"🔍 AI SEND_MESSAGE: Starting...")
         
+        # Validate request data
+        if not request.json:
+            print(f"❌ AI SEND_MESSAGE: No JSON data in request")
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
         data = request.json
         session_id = data.get('session_id')
         user_message = data.get('message')
@@ -322,13 +352,17 @@ def send_message():
         print(f"🔍 AI SEND_MESSAGE: session_id={session_id}, message='{user_message}', type={message_type}")
         
         if not session_id or not user_message:
+            print(f"❌ AI SEND_MESSAGE: Missing required fields")
             return jsonify({'error': 'Missing session_id or message'}), 400
         
         # Check if session exists
         if session_id not in sessions:
+            print(f"❌ AI SEND_MESSAGE: Session {session_id} not found")
+            print(f"🔍 Available sessions: {list(sessions.keys())}")
             return jsonify({'error': 'Session not found'}), 404
         
         session = sessions[session_id]
+        print(f"🔍 AI SEND_MESSAGE: Session found, current topic: {session.get('topic')}")
         
         # Add user message to conversation history
         session['conversation_history'].append({
@@ -388,8 +422,16 @@ def send_message():
             topic = session.get('topic', 'performance improvement')
             conversation_history = session.get('conversation_history', [])
             
-            response = get_ai_coaching_response(user_message, conversation_history, topic)
-            print(f"🔍 AI SEND_MESSAGE: AI response generated: {response.get('ai_powered', False)}")
+            try:
+                response = get_ai_coaching_response(user_message, conversation_history, topic)
+                print(f"🔍 AI SEND_MESSAGE: AI response generated: {response.get('ai_powered', False)}")
+            except Exception as ai_error:
+                print(f"❌ AI SEND_MESSAGE: AI response generation failed: {ai_error}")
+                # Fallback to simple response
+                response = {
+                    'message': "Thank you for sharing that. I'm here to support you in exploring this further. What feels most important to focus on right now?",
+                    'questions': ["What would you like to explore next?", "How can I best support you with this?"]
+                }
         
         # Add coach response to history
         session['conversation_history'].append({
@@ -411,10 +453,18 @@ def send_message():
         return jsonify(response)
         
     except Exception as e:
-        print(f"❌ AI SEND_MESSAGE: Error: {e}")
+        print(f"❌ AI SEND_MESSAGE: Unexpected error: {e}")
+        print(f"❌ AI SEND_MESSAGE: Error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+        
+        # Return a safe fallback response
+        return jsonify({
+            'error': 'Internal server error',
+            'message': "I apologize, but I'm experiencing a technical issue. Could you please try again?",
+            'questions': ["What would you like to explore?"],
+            'stage': 'exploration'
+        }), 500
 
 if __name__ == '__main__':
     print("🚀 Starting AI-powered adaptive coaching app...")
