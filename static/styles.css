@@ -268,7 +268,7 @@ body {
 .chat-messages {
     flex: 1;
     padding: 1.5rem;
-    overflow-y: auto;
+    overflow-y: scroll !important; /* Force scroll with !important */
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
@@ -277,6 +277,9 @@ body {
     /* Remove conflicting max-height calculation */
     /* max-height: calc(100vh - 300px); */
     min-height: 0; /* Allow flex item to shrink */
+    height: 100%; /* Ensure full height usage */
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on mobile */
+    scroll-behavior: smooth; /* Smooth scrolling */
 }
 
 .message {
