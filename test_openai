@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""
+Quick test to verify OpenAI API key is working
+"""
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+try:
+    import openai
+    print("✅ OpenAI library imported successfully")
+except ImportError:
+    print("❌ OpenAI library not found - run: pip install openai")
+    exit(1)
+
+# Get API key
+api_key = os.getenv('OPENAI_API_KEY')
+
+if not api_key:
+    print("❌ No OPENAI_API_KEY found in .env file")
+    print("Please add: OPENAI_API_KEY=your-key-here to your .env file")
+    exit(1)
+
+print(f"✅ API key found: {api_key[:10]}...{api_key[-4:]}")
+
+# Test OpenAI connection
+try:
+    # Try old syntax first
+    openai.api_key = api_key
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say 'Hello, OpenAI is working!'"}
+            ],
+            max_tokens=50
+        )
+        
+        message = response.choices[0].message.content.strip()
+        print(f"✅ OpenAI OLD SYNTAX SUCCESS: {message}")
+        
+    except AttributeError:
+        # Try new syntax
+        print("🔄 Trying new OpenAI client syntax...")
+        client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say 'Hello, OpenAI is working!'"}
+            ],
+            max_tokens=50
+        )
+        
+        message = response.choices[0].message.content.strip()
+        print(f"✅ OpenAI NEW SYNTAX SUCCESS: {message}")
+
+except Exception as e:
+    print(f"❌ OpenAI API Error: {e}")
+    print(f"❌ Error type: {type(e).__name__}")
+    
+    if "api_key" in str(e).lower():
+        print("💡 Possible fixes:")
+        print("   - Verify your API key is correct")
+        print("   - Check if your API key has expired")
+        print("   - Ensure you have credits/quota remaining")
+    elif "quota" in str(e).lower() or "billing" in str(e).lower():
+        print("💡 Issue: Insufficient quota or billing issue")
+        print("   - Check your OpenAI account billing")
+        print("   - Add credits to your OpenAI account")
+    else:
+        print("💡 Other possible issues:")
+        print("   - Network connectivity")
+        print("   - Firewall blocking OpenAI API") 
