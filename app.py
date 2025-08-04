@@ -98,9 +98,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize database immediately after definition
-init_db()
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -129,80 +126,105 @@ def start_session():
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
     """Process user message and generate coaching response"""
-    data = request.json
-    session_id = data.get('session_id')
-    user_message = data.get('message')
-    message_type = data.get('type', 'text')  # text, topic_selection, action_commitment
-    
-    if not session_id or not user_message:
-        return jsonify({'error': 'Missing session_id or message'}), 400
-    
-    # Get conversation state
-    state = conversation_engine.get_session(session_id)
-    if not state:
-        return jsonify({'error': 'Session not found'}), 404
-    
-    # Analyze emotional tone
-    emotional_analysis = tone_analyzer.analyze_tone(user_message)
-    
-    # Generate response based on current stage and message type
-    if message_type == 'topic_selection':
-        response = conversation_engine.process_topic_selection(state, user_message)
-    elif message_type == 'action_commitment':
-        action_data = json.loads(user_message) if isinstance(user_message, str) else user_message
-        response = conversation_engine.process_action_commitment(state, action_data)
-    else:
-        # Regular conversation flow
-        if state.current_stage == ConversationStage.INTAKE:
-            # Intelligent topic detection from natural language
-            detected_topic = detect_topic_from_message(user_message)
-            if detected_topic:
-                print(f"🎯 Detected topic: {detected_topic} from message: '{user_message}'")
-                response = conversation_engine.process_topic_selection(state, detected_topic)
-            else:
-                response = conversation_engine.generate_intake_response(state)
-        elif state.current_stage == ConversationStage.EXPLORATION:
-            response = conversation_engine.generate_exploration_response(state, user_message)
-        elif state.current_stage == ConversationStage.REFLECTION:
-            response = conversation_engine.generate_reflection_response(state, user_message)
-        elif state.current_stage == ConversationStage.ACTION_PLANNING:
-            response = conversation_engine.generate_action_planning_response(state, user_message)
-        elif state.current_stage == ConversationStage.FOLLOW_UP:
-            response = conversation_engine.generate_follow_up_response(state, user_message)
-        else:
-            response = {'error': 'Invalid conversation stage'}
-    
-    # Check if AI suggests stage transition and update accordingly
-    if 'error' not in response and 'suggested_next_stage' in response:
-        suggested_stage = response['suggested_next_stage']
+    try:
+        print(f"🔍 SEND_MESSAGE DEBUG: Starting request processing...")
+        data = request.json
+        session_id = data.get('session_id')
+        user_message = data.get('message')
+        message_type = data.get('type', 'text')  # text, topic_selection, action_commitment
+        
+        print(f"🔍 SEND_MESSAGE DEBUG: session_id={session_id}, message='{user_message}', type={message_type}")
+        
+        if not session_id or not user_message:
+            return jsonify({'error': 'Missing session_id or message'}), 400
+        
+        # Get conversation state
+        print(f"🔍 SEND_MESSAGE DEBUG: Getting session...")
+        state = conversation_engine.get_session(session_id)
+        if not state:
+            return jsonify({'error': 'Session not found'}), 404
+        
+        print(f"🔍 SEND_MESSAGE DEBUG: Current stage: {state.current_stage}")
+        
+        # Analyze emotional tone with error handling
+        print(f"🔍 SEND_MESSAGE DEBUG: Analyzing tone...")
         try:
-            # Convert string to enum and update state if different
-            new_stage = ConversationStage(suggested_stage)
-            if new_stage != state.current_stage:
-                print(f"🔄 Stage transition: {state.current_stage.value} → {new_stage.value}")
-                state.current_stage = new_stage
-                state.updated_at = datetime.now()
-                # Update the response to reflect the new stage
-                response['stage'] = new_stage.value
-        except ValueError:
-            # Invalid stage suggestion, keep current stage
-            print(f"⚠️ Invalid stage suggestion: {suggested_stage}")
-            pass
+            emotional_analysis = tone_analyzer.analyze_tone(user_message)
+            print(f"🔍 SEND_MESSAGE DEBUG: Tone analysis successful")
+        except Exception as e:
+            print(f"❌ SEND_MESSAGE DEBUG: Tone analysis failed: {e}")
+            emotional_analysis = {'primary_emotion': 'neutral', 'intensity': 0.5}
     
-    # Skip personalization for now to avoid question interference
-    # if 'error' not in response:
-    #     personalized_response = personalization_engine.personalize_response(
-    #         response, emotional_analysis, state.user_id
-    #     )
-    #     response.update(personalized_response)
+        # Generate response based on current stage and message type
+        print(f"🔍 SEND_MESSAGE DEBUG: Processing message type: {message_type}")
+        if message_type == 'topic_selection':
+            response = conversation_engine.process_topic_selection(state, user_message)
+        elif message_type == 'action_commitment':
+            action_data = json.loads(user_message) if isinstance(user_message, str) else user_message
+            response = conversation_engine.process_action_commitment(state, action_data)
+        else:
+            # Regular conversation flow
+            if state.current_stage == ConversationStage.INTAKE:
+                # Intelligent topic detection from natural language
+                detected_topic = detect_topic_from_message(user_message)
+                if detected_topic:
+                    print(f"🎯 Detected topic: {detected_topic} from message: '{user_message}'")
+                    response = conversation_engine.process_topic_selection(state, detected_topic)
+                else:
+                    response = conversation_engine.generate_intake_response(state)
+            elif state.current_stage == ConversationStage.EXPLORATION:
+                print(f"🔍 SEND_MESSAGE DEBUG: Generating exploration response...")
+                response = conversation_engine.generate_exploration_response(state, user_message)
+                print(f"🔍 SEND_MESSAGE DEBUG: Exploration response generated successfully")
+            elif state.current_stage == ConversationStage.REFLECTION:
+                response = conversation_engine.generate_reflection_response(state, user_message)
+            elif state.current_stage == ConversationStage.ACTION_PLANNING:
+                response = conversation_engine.generate_action_planning_response(state, user_message)
+            elif state.current_stage == ConversationStage.FOLLOW_UP:
+                response = conversation_engine.generate_follow_up_response(state, user_message)
+            else:
+                response = {'error': 'Invalid conversation stage'}
+        
+        # Check if AI suggests stage transition and update accordingly
+        if 'error' not in response and 'suggested_next_stage' in response:
+            suggested_stage = response['suggested_next_stage']
+            try:
+                # Convert string to enum and update state if different
+                new_stage = ConversationStage(suggested_stage)
+                if new_stage != state.current_stage:
+                    print(f"🔄 Stage transition: {state.current_stage.value} → {new_stage.value}")
+                    state.current_stage = new_stage
+                    state.updated_at = datetime.now()
+                    # Update the response to reflect the new stage
+                    response['stage'] = new_stage.value
+            except ValueError:
+                # Invalid stage suggestion, keep current stage
+                print(f"⚠️ Invalid stage suggestion: {suggested_stage}")
+                pass
+        
+        # Skip personalization for now to avoid question interference
+        # if 'error' not in response:
+        #     personalized_response = personalization_engine.personalize_response(
+        #         response, emotional_analysis, state.user_id
+        #     )
+        #     response.update(personalized_response)
+        
+        # Save updated session
+        print(f"🔍 SEND_MESSAGE DEBUG: Saving session to database...")
+        save_session_to_db(state)
     
-    # Save updated session
-    save_session_to_db(state)
-    
-    # Add emotional analysis to response
-    response['emotional_analysis'] = emotional_analysis
-    
-    return jsonify(response)
+        # Add emotional analysis to response
+        response['emotional_analysis'] = emotional_analysis
+        
+        print(f"✅ SEND_MESSAGE DEBUG: Request completed successfully")
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"❌ SEND_MESSAGE DEBUG: Unexpected error: {e}")
+        print(f"❌ SEND_MESSAGE DEBUG: Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session(session_id):
