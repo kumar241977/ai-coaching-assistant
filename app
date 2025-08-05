@@ -389,14 +389,25 @@ def start_session():
     """Start a new coaching session - AI POWERED VERSION"""
     try:
         print(f"🔍 AI START_SESSION: Starting new session...")
+        print(f"🔍 AI START_SESSION: Request method: {request.method}")
+        print(f"🔍 AI START_SESSION: Request content type: {request.content_type}")
         
+        # Check if request has JSON data
+        if request.content_type and 'application/json' in request.content_type:
+            data = request.get_json()
+            print(f"🔍 AI START_SESSION: Request data: {data}")
+        else:
+            print(f"🔍 AI START_SESSION: No JSON data in request")
+        
+        print(f"🔍 AI START_SESSION: Generating IDs...")
         user_id = str(uuid.uuid4())
         session_id = str(uuid.uuid4())
         
         print(f"🔍 AI START_SESSION: user_id={user_id}, session_id={session_id}")
         
+        print(f"🔍 AI START_SESSION: Creating session object...")
         # Store in memory with conversation history
-        sessions[session_id] = {
+        session_data = {
             'user_id': user_id,
             'session_id': session_id,
             'stage': 'intake',
@@ -405,8 +416,13 @@ def start_session():
             'created_at': datetime.now().isoformat()
         }
         
+        print(f"🔍 AI START_SESSION: Storing session in memory...")
+        sessions[session_id] = session_data
+        print(f"🔍 AI START_SESSION: Session stored. Total sessions: {len(sessions)}")
+        
+        print(f"🔍 AI START_SESSION: Creating response object...")
         # Simple response
-        response = {
+        response_data = {
             'message': 'Welcome to your coaching session! I\'m here to support you in exploring what\'s important to you. This is a confidential space where you can share openly.',
             'questions': [
                 'What brings you to coaching right now?',
@@ -417,18 +433,26 @@ def start_session():
             'available_topics': ['performance_improvement', 'career_development', 'work_life_balance', 'leadership_growth']
         }
         
-        print(f"✅ AI START_SESSION: Session created successfully")
-        return jsonify({
+        print(f"🔍 AI START_SESSION: Creating final JSON response...")
+        final_response = {
             'session_id': session_id,
             'user_id': user_id,
-            'response': response
-        })
+            'response': response_data
+        }
+        
+        print(f"✅ AI START_SESSION: Session created successfully")
+        return jsonify(final_response)
         
     except Exception as e:
-        print(f"❌ AI START_SESSION: Error: {e}")
+        print(f"❌ AI START_SESSION: Error occurred: {e}")
+        print(f"❌ AI START_SESSION: Error type: {type(e).__name__}")
         import traceback
+        print(f"❌ AI START_SESSION: Full traceback:")
         traceback.print_exc()
-        return jsonify({'error': f'Failed to start session: {str(e)}'}), 500
+        
+        error_response = {'error': f'Failed to start session: {str(e)}'}
+        print(f"❌ AI START_SESSION: Returning error response: {error_response}")
+        return jsonify(error_response), 500
 
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
