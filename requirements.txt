@@ -6,4 +6,5 @@ python-dotenv==1.0.0
 textblob==0.17.1
 pyspellchecker==0.7.3
 nltk==3.8.1
+vaderSentiment==3.3.2
 gunicorn==21.2.0
