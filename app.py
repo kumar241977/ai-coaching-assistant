@@ -6,7 +6,8 @@ from datetime import datetime
 import json
 import os
 from dotenv import load_dotenv
-import openai
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,11 +60,16 @@ def get_ai_coaching_response(user_message, conversation_history, topic):
         
         print(f"🔑 OpenAI API key configured: {openai_api_key[:10]}...{openai_api_key[-4:]}")
         
-        # Build conversation context
-        messages = [
-            {
-                "role": "system", 
-                "content": f"""You are an expert ICF-certified executive coach specializing in {topic}. 
+        # Build comprehensive conversation context for system message
+        conversation_context = ""
+        if conversation_history:
+            conversation_context = "\n\nRecent conversation history:\n"
+            for entry in conversation_history[-4:]:  # Last 4 exchanges for context
+                role_name = "Coach" if entry['role'] == 'coach' else "Client"
+                conversation_context += f"{role_name}: {entry['content']}\n"
+        
+        # Build system message with context
+        system_message = f"""You are an expert ICF-certified executive coach specializing in {topic}. 
 
 Key coaching principles:
 - Use powerful questions to create awareness
@@ -82,110 +88,59 @@ Conversation style:
 - Help connect insights to actions
 - Use "I notice..." and "What do you think..." language
 
-Current conversation depth: {len(conversation_history)} exchanges"""
-            }
+Current conversation depth: {len(conversation_history)} exchanges{conversation_context}
+
+Please respond to the client's latest message with empathy and powerful coaching questions."""
+        
+        # Create LangChain-optimized message structure
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
         ]
         
-        # Add conversation history for context
-        for entry in conversation_history[-6:]:  # Last 6 messages for context
-            role = "assistant" if entry['role'] == 'coach' else "user"
-            messages.append({"role": role, "content": entry['content']})
+        print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages using LangChain")
         
-        # Add current message
-        messages.append({"role": "user", "content": user_message})
-        
-        print(f"🤖 AI DEBUG: Making OpenAI request with {len(messages)} messages")
-        print(f"🤖 AI DEBUG: Using NEW OpenAI client syntax (v1.0+)")
-        
-        # Use new OpenAI client syntax only - Clean initialization
+        # Use LangChain ChatOpenAI - handles proxy issues and API complexities automatically
         try:
-            # Clear any proxy-related environment variables that might interfere
-            env_backup = {}
-            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']
-            for var in proxy_vars:
-                if var in os.environ:
-                    env_backup[var] = os.environ[var]
-                    del os.environ[var]
-            
-            print("🧹 Cleared proxy environment variables for clean OpenAI initialization")
-            
-            # Create OpenAI client with clean parameters
-            client = openai.OpenAI(api_key=openai_api_key)
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=messages,
+            # Initialize LangChain ChatOpenAI
+            chat = ChatOpenAI(
+                openai_api_key=openai_api_key,
+                model_name="gpt-3.5-turbo",
                 max_tokens=200,
                 temperature=0.7
             )
             
-            # Restore environment variables
-            for var, value in env_backup.items():
-                os.environ[var] = value
+            # Convert messages to LangChain format (simplified structure)
+            langchain_messages = [
+                SystemMessage(content=messages[0]["content"]),  # System message with context
+                HumanMessage(content=messages[1]["content"])    # Current user message
+            ]
             
-            ai_message = response.choices[0].message.content.strip()
-            print("✅ AI DEBUG: OpenAI response generated successfully")
+            print(f"🔄 AI DEBUG: Converted {len(langchain_messages)} messages for LangChain")
             
-        except Exception as openai_error:
-            print(f"❌ AI DEBUG: OpenAI request failed: {openai_error}")
-            print(f"❌ AI DEBUG: Error type: {type(openai_error).__name__}")
+            # Make the API call through LangChain
+            response = chat(langchain_messages)
+            ai_message = response.content.strip()
             
-            # Restore environment variables in case of error
-            for var, value in env_backup.items():
-                os.environ[var] = value
+            print("✅ AI DEBUG: LangChain OpenAI response generated successfully")
+            
+        except Exception as langchain_error:
+            print(f"❌ AI DEBUG: LangChain request failed: {langchain_error}")
+            print(f"❌ AI DEBUG: Error type: {type(langchain_error).__name__}")
             
             # Provide specific error guidance
-            error_str = str(openai_error).lower()
-            if "authentication" in error_str or "api_key" in error_str:
+            error_str = str(langchain_error).lower()
+            if "authentication" in error_str or "api_key" in error_str or "unauthorized" in error_str:
                 print("💡 Issue: API key authentication failed")
                 return get_enhanced_fallback_response(user_message, conversation_history, topic)
-            elif "quota" in error_str or "billing" in error_str:
+            elif "quota" in error_str or "billing" in error_str or "insufficient_quota" in error_str:
                 print("💡 Issue: Insufficient quota or billing problem")
                 return get_enhanced_fallback_response(user_message, conversation_history, topic)
             elif "rate_limit" in error_str:
                 print("💡 Issue: Rate limit exceeded")
                 return get_enhanced_fallback_response(user_message, conversation_history, topic)
-            elif "proxies" in error_str or "proxy" in error_str or "unexpected keyword" in error_str:
-                print("💡 Issue: Persistent proxy conflict - trying HTTP requests approach")
-                
-                # Final fallback: Use direct HTTP requests instead of OpenAI client
-                try:
-                    import requests
-                    import json
-                    
-                    headers = {
-                        'Authorization': f'Bearer {openai_api_key}',
-                        'Content-Type': 'application/json'
-                    }
-                    
-                    data = {
-                        'model': 'gpt-3.5-turbo',
-                        'messages': messages,
-                        'max_tokens': 200,
-                        'temperature': 0.7
-                    }
-                    
-                    print("🌐 Trying direct HTTP request to OpenAI API")
-                    http_response = requests.post(
-                        'https://api.openai.com/v1/chat/completions',
-                        headers=headers,
-                        json=data,
-                        timeout=15
-                    )
-                    
-                    if http_response.status_code == 200:
-                        result = http_response.json()
-                        ai_message = result['choices'][0]['message']['content'].strip()
-                        print("✅ AI DEBUG: Direct HTTP request successful")
-                    else:
-                        print(f"❌ HTTP request failed: {http_response.status_code} - {http_response.text}")
-                        return get_enhanced_fallback_response(user_message, conversation_history, topic)
-                        
-                except Exception as http_error:
-                    print(f"❌ AI DEBUG: HTTP request also failed: {http_error}")
-                    return get_enhanced_fallback_response(user_message, conversation_history, topic)
             else:
-                print(f"💡 Issue: {openai_error}")
+                print(f"💡 Issue: {langchain_error}")
                 return get_enhanced_fallback_response(user_message, conversation_history, topic)
             
             # If we haven't returned yet, fall back to enhanced responses
