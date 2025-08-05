@@ -7,8 +7,7 @@ from conversation_flow import ConversationFlowEngine, ConversationStage
 from nlp_personalization import EmotionalToneAnalyzer, PersonalizationEngine
 import sqlite3
 import json
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
+import openai
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
