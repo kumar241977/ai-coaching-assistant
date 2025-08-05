@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+def test_openai_api_key():
+    """Test if OpenAI API key is present and has correct format"""
+    
+    api_key = os.getenv('OPENAI_API_KEY')
+    
+    print("🔑 OpenAI API Key Test")
+    print("=" * 50)
+    
+    if not api_key:
+        print("❌ No OPENAI_API_KEY found in environment")
+        return False
+    
+    print(f"✅ API Key present: {len(api_key)} characters")
+    print(f"🔍 Format: {api_key[:15]}...{api_key[-4:]}")
+    
+    # Check if it looks like a valid OpenAI key
+    if api_key.startswith('sk-proj-') and len(api_key) > 50:
+        print("✅ Key format looks correct (sk-proj-...)")
+        valid_format = True
+    elif api_key.startswith('sk-') and len(api_key) > 40:
+        print("✅ Key format looks correct (sk-...)")
+        valid_format = True
+    else:
+        print("❌ Key format looks incorrect")
+        print("   Expected: sk-proj-... or sk-...")
+        print(f"   Got: {api_key[:20]}...")
+        valid_format = False
+    
+    # Try to make a test API call
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        
+        print("\n🧪 Testing API connection...")
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Test"}],
+            max_tokens=5
+        )
+        print("✅ API call successful!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ API call failed: {e}")
+        error_str = str(e).lower()
+        
+        if "authentication" in error_str or "api_key" in error_str:
+            print("💡 Issue: Invalid API key")
+        elif "quota" in error_str or "billing" in error_str:
+            print("💡 Issue: Insufficient quota or billing problem")
+        elif "rate_limit" in error_str:
+            print("💡 Issue: Rate limit exceeded")
+        else:
+            print(f"💡 Issue: {e}")
+        
+        return False
+
+if __name__ == "__main__":
+    success = test_openai_api_key()
+    
+    if not success:
+        print("\n🚨 Next Steps:")
+        print("1. Get a fresh API key from: https://platform.openai.com/api-keys")
+        print("2. Update OPENAI_API_KEY in your deployment environment")
+        print("3. Restart your application") 
