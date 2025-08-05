@@ -10,8 +10,10 @@ class CoachingAssistant {
     }
     
     init() {
+        console.log('🚀 DEBUG: CoachingAssistant initializing...');
         this.bindEvents();
         this.showWelcomeScreen();
+        console.log('✅ DEBUG: CoachingAssistant initialized');
     }
     
     bindEvents() {
@@ -19,8 +21,13 @@ class CoachingAssistant {
         document.querySelectorAll('.topic-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 const topic = e.currentTarget.dataset.topic;
+                console.log('🎯 DEBUG: Topic card clicked:', topic);
+                console.log('🎯 DEBUG: Event target:', e.currentTarget);
+                
                 // Clear any existing messages before starting new topic
                 document.getElementById('chat-messages').innerHTML = '';
+                
+                console.log('🚀 DEBUG: Calling selectTopic...');
                 this.selectTopic(topic);
             });
         });
@@ -61,9 +68,11 @@ class CoachingAssistant {
     }
     
     async startNewSession() {
+        console.log('🔄 DEBUG: Starting new session...');
         this.showLoading(true);
         
         try {
+            console.log('🌐 DEBUG: Making API call to /api/start-session');
             const response = await fetch('/api/start-session', {
                 method: 'POST',
                 headers: {
@@ -74,19 +83,31 @@ class CoachingAssistant {
                 })
             });
             
+            console.log('📡 DEBUG: Start session response status:', response.status);
+            console.log('📡 DEBUG: Start session response ok:', response.ok);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
+            console.log('📝 DEBUG: Start session response data:', data);
             
             if (data.session_id) {
                 this.sessionId = data.session_id;
                 this.userId = data.user_id;
                 this.currentStage = 'intake';
                 
+                console.log('✅ DEBUG: Session started successfully:', this.sessionId);
                 this.updateSessionStatus('Session Active');
                 // Don't show chat interface or add messages here
                 // Let topic selection handle the first message
+            } else {
+                console.error('❌ DEBUG: No session_id in response');
+                throw new Error('Invalid response from server');
             }
         } catch (error) {
-            console.error('Error starting session:', error);
+            console.error('❌ DEBUG: Error starting session:', error);
             this.showError('Failed to start session. Please try again.');
         } finally {
             this.showLoading(false);
@@ -94,13 +115,18 @@ class CoachingAssistant {
     }
     
     async selectTopic(topicKey) {
+        console.log('🎯 DEBUG: Topic selected:', topicKey);
+        
         if (!this.sessionId) {
+            console.log('🔍 DEBUG: No session ID, starting new session...');
             await this.startNewSession();
+            console.log('🔍 DEBUG: New session started with ID:', this.sessionId);
         }
         
         this.showLoading(true);
         
         try {
+            console.log('🌐 DEBUG: Making API call to /api/send-message');
             const response = await fetch('/api/send-message', {
                 method: 'POST',
                 headers: {
@@ -113,10 +139,20 @@ class CoachingAssistant {
                 })
             });
             
+            console.log('📡 DEBUG: Response status:', response.status);
+            console.log('📡 DEBUG: Response ok:', response.ok);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const data = await response.json();
+            console.log('📝 DEBUG: Response data:', data);
             
             if (data.message) {
+                console.log('✅ DEBUG: Got message, showing chat interface...');
                 this.showChatInterface();
+                
                 // Clear any existing messages first
                 document.getElementById('chat-messages').innerHTML = '';
                 
@@ -132,10 +168,14 @@ class CoachingAssistant {
                         console.log('🔍 DEBUG: Skipping emotional analysis display due to missing HTML elements');
                     }
                 }
+                console.log('🎉 DEBUG: Topic selection completed successfully');
+            } else {
+                console.error('❌ DEBUG: No message in response data');
+                this.showError('Invalid response from server.');
             }
         } catch (error) {
-            console.error('Error selecting topic:', error);
-            this.showError('Failed to process topic selection.');
+            console.error('❌ DEBUG: Error selecting topic:', error);
+            this.showError('Failed to process topic selection. Please try again.');
         } finally {
             this.showLoading(false);
         }
@@ -498,14 +538,26 @@ class CoachingAssistant {
     }
     
     showChatInterface() {
-        document.getElementById('welcome-screen').style.display = 'none';
-        document.getElementById('chat-interface').style.display = 'flex';
-        document.getElementById('action-form').style.display = 'none';
+        console.log('🔄 DEBUG: showChatInterface() called');
+        
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const chatInterface = document.getElementById('chat-interface');
+        const actionForm = document.getElementById('action-form');
+        
+        console.log('🔍 DEBUG: Elements found - welcome:', !!welcomeScreen, 'chat:', !!chatInterface, 'action:', !!actionForm);
+        
+        if (welcomeScreen) welcomeScreen.style.display = 'none';
+        if (chatInterface) chatInterface.style.display = 'flex';
+        if (actionForm) actionForm.style.display = 'none';
+        
+        console.log('🔄 DEBUG: Display styles updated');
         
         // Ensure input is fully enabled and ready
         setTimeout(() => {
             const inputEl = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
+            
+            console.log('🔍 DEBUG: Input elements found - input:', !!inputEl, 'button:', !!sendBtn);
             
             if (inputEl) {
                 // Force enable the input field
