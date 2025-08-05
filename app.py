@@ -325,14 +325,24 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
                     "What would you need to feel more confident when facing new complex challenges?"
                 ]
             }
-        else:  # Multiple fear mentions - focus on moving forward
-            return {
-                'message': "I'm hearing how deeply this fear has influenced your relationship with challenging tasks. Given everything you've shared about where this fear comes from, what feels most important to address right now?",
-                'questions': [
-                    "What would be different if you could approach complex tasks with curiosity instead of fear?",
-                    "What's one way you could start building evidence that you can handle challenging work?"
-                ]
-            }
+        else:  # Multiple fear mentions - focus on moving forward with variation
+            # Avoid repetition by checking if we just asked about taking action
+            if 'take the first step' in user_lower or 'overcome this fear' in user_lower:
+                return {
+                    'message': "I can hear your readiness to move beyond this fear pattern. That's a powerful shift from feeling stuck to wanting action. What would taking just one small step look like for you?",
+                    'questions': [
+                        "What's the smallest possible first step you could take on a complex task?",
+                        "What support or resources would make that first step feel more manageable?"
+                    ]
+                }
+            else:
+                return {
+                    'message': "I'm hearing how deeply this fear has influenced your relationship with challenging tasks. Given everything you've shared about where this fear comes from, what feels most important to address right now?",
+                    'questions': [
+                        "What would be different if you could approach complex tasks with curiosity instead of fear?",
+                        "What's one way you could start building evidence that you can handle challenging work?"
+                    ]
+                }
     
     # Complex tasks and time pressure responses
     elif any(word in user_lower for word in ['complex activity', 'assigned', 'complete it on time', 'roadblocks', 'hit roadblocks']):
@@ -584,7 +594,7 @@ def send_message():
             'stage': 'exploration',
             'competency_applied': 'active_listening',
             'ai_confidence': 0.9,
-            'demo_mode': True,
+            'demo_mode': not response.get('ai_powered', False),  # True only if NOT AI-powered
             'emotional_analysis': {'primary_emotion': 'engaged', 'intensity': 0.7}
         })
         
