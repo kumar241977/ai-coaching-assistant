@@ -194,18 +194,44 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 print(f"💡 Issue: {api_error}")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
-        # Extract questions from the response (simple heuristic)
-        lines = ai_message.split('\n')
-        questions = [line.strip('- ').strip() for line in lines if '?' in line][-2:]  # Last 2 questions
+        # Extract questions from the response (improved extraction)
+        import re
         
-        # If no questions found, generate some
+        # Find all sentences that end with question marks
+        question_pattern = r'([^.!?]*\?)'
+        found_questions = re.findall(question_pattern, ai_message)
+        
+        # Clean up and filter questions
+        questions = []
+        for q in found_questions:
+            q = q.strip().strip('- ').strip()
+            # Filter out very short or generic questions
+            if len(q) > 15 and not q.lower().startswith('what do you think'):
+                questions.append(q)
+        
+        # Take last 2 questions if multiple found
+        questions = questions[-2:] if len(questions) > 2 else questions
+        
+        # If no good questions found, generate coaching questions based on content
         if not questions:
-            questions = [
-                "What patterns are you noticing as we explore this?",
-                "What feels most important for you to understand about this situation?"
-            ]
+            if 'fear' in ai_message.lower() or 'afraid' in ai_message.lower():
+                questions = [
+                    "What would it look like to approach this with curiosity instead of fear?",
+                    "What evidence do you have that contradicts this fear?"
+                ]
+            elif 'procrastination' in ai_message.lower() or 'delay' in ai_message.lower():
+                questions = [
+                    "What would help you take the first step on a challenging task?",
+                    "What patterns do you notice about when procrastination shows up?"
+                ]
+            else:
+                questions = [
+                    "What patterns are you noticing as we explore this?",
+                    "What feels most important for you to understand about this situation?"
+                ]
         
-        print(f"✅ AI DEBUG: OpenAI response generated successfully with {len(questions)} questions")
+        print(f"✅ AI DEBUG: OpenAI response generated successfully")
+        print(f"🔍 AI DEBUG: Extracted {len(questions)} questions: {questions}")
         return {
             'message': ai_message,
             'questions': questions,
