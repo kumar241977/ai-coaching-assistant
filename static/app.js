@@ -20,6 +20,7 @@ class CoachingAssistant {
         // Topic selection
         document.querySelectorAll('.topic-card').forEach(card => {
             card.addEventListener('click', (e) => {
+                if (this.isLoading) return; // Prevent clicks during loading
                 const topic = e.currentTarget.dataset.topic;
                 console.log('🎯 DEBUG: Topic card clicked:', topic);
                 console.log('🎯 DEBUG: Event target:', e.currentTarget);
@@ -44,12 +45,14 @@ class CoachingAssistant {
         
         // Send message
         document.getElementById('send-btn').addEventListener('click', () => {
-            this.sendMessage();
+            if (!this.isLoading) { // Only send if not loading
+                this.sendMessage();
+            }
         });
         
         // Enter key to send message
         document.getElementById('user-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !this.isLoading) {
                 e.preventDefault();
                 this.sendMessage();
             }
@@ -86,12 +89,21 @@ class CoachingAssistant {
             console.log('📡 DEBUG: Start session response status:', response.status);
             console.log('📡 DEBUG: Start session response ok:', response.ok);
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            let data;
+            try {
+                data = await response.json();
+                console.log('📝 DEBUG: Start session response data:', data);
+            } catch (jsonError) {
+                console.error('❌ DEBUG: Failed to parse JSON response:', jsonError);
+                throw new Error(`Server error (${response.status}): Failed to parse response`);
             }
             
-            const data = await response.json();
-            console.log('📝 DEBUG: Start session response data:', data);
+            if (!response.ok) {
+                // Server returned an error, but we got JSON data
+                const errorMsg = data.error || `HTTP error! status: ${response.status}`;
+                console.error('❌ DEBUG: Server returned error:', errorMsg);
+                throw new Error(errorMsg);
+            }
             
             if (data.session_id) {
                 this.sessionId = data.session_id;
@@ -142,12 +154,20 @@ class CoachingAssistant {
             console.log('📡 DEBUG: Response status:', response.status);
             console.log('📡 DEBUG: Response ok:', response.ok);
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            let data;
+            try {
+                data = await response.json();
+                console.log('📝 DEBUG: Response data:', data);
+            } catch (jsonError) {
+                console.error('❌ DEBUG: Failed to parse JSON response:', jsonError);
+                throw new Error(`Server error (${response.status}): Failed to parse response`);
             }
             
-            const data = await response.json();
-            console.log('📝 DEBUG: Response data:', data);
+            if (!response.ok) {
+                const errorMsg = data.error || `HTTP error! status: ${response.status}`;
+                console.error('❌ DEBUG: Server returned error:', errorMsg);
+                throw new Error(errorMsg);
+            }
             
             if (data.message) {
                 console.log('✅ DEBUG: Got message, showing chat interface...');
@@ -657,6 +677,8 @@ class CoachingAssistant {
     }
     
     showError(message) {
+        console.log('🚨 DEBUG: showError() called with message:', message);
+        
         // Better error display with UI recovery
         alert(message);
         
@@ -678,11 +700,14 @@ class CoachingAssistant {
         if (message.includes('session') || message.includes('Session')) {
             console.log('🔄 DEBUG: Session error detected, might need session restart');
             if (confirm('There seems to be a session issue. Would you like to restart the session?')) {
+                console.log('🔄 DEBUG: User confirmed session restart');
                 this.restartSession();
+            } else {
+                console.log('🔄 DEBUG: User cancelled session restart');
             }
         }
         
-        console.log('UI state reset after error:', message);
+        console.log('✅ DEBUG: UI state reset after error:', message);
     }
     
     async restartSession() {
