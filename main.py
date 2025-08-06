@@ -273,3 +273,4 @@ def get_intelligent_fallback_response(user_message, conversation_history, topic)
 if __name__ == '__main__':
     print("🚀 Starting AI Coaching Assistant...")
     app.run(host='0.0.0.0', port=5000, debug=True) 
+
