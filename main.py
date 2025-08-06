@@ -198,19 +198,27 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         import re
         
         # Find all sentences that end with question marks
-        question_pattern = r'([^.!?]*\?)'
+        question_pattern = r'([A-Z][^.!?]*\?)'
         found_questions = re.findall(question_pattern, ai_message)
         
         # Clean up and filter questions
         questions = []
         for q in found_questions:
             q = q.strip().strip('- ').strip()
-            # Filter out very short or generic questions
-            if len(q) > 15 and not q.lower().startswith('what do you think'):
+            # Filter out very short, generic, or incomplete questions
+            if (len(q) > 20 and 
+                not q.lower().startswith('what do you think') and
+                not q.lower().startswith('how does this') and
+                '?' in q and
+                q != ai_message.strip()):  # Prevent copying entire message
                 questions.append(q)
         
         # Take last 2 questions if multiple found
         questions = questions[-2:] if len(questions) > 2 else questions
+        
+        # Additional safety check - if questions are too similar to main message, clear them
+        if questions and any(len(q) > len(ai_message) * 0.8 for q in questions):
+            questions = []
         
         # If no good questions found, generate coaching questions based on content
         if not questions:
