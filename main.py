@@ -114,6 +114,14 @@ def get_ai_coaching_response(user_message, conversation_history, topic):
         print(f"🔑 OpenAI API key configured: {openai_api_key[:10]}...{openai_api_key[-4:]}")
         
         # Build conversation context
+        conversation_depth = len(conversation_history)
+        closure_guidance = ""
+        
+        if conversation_depth >= 6:
+            closure_guidance = "\n\nIMPORTANT: This conversation is getting deep. Start transitioning toward insights and action. Help the client synthesize what they've learned and identify next steps."
+        elif conversation_depth >= 8:
+            closure_guidance = "\n\nIMPORTANT: This conversation should move toward closure. Focus on key takeaways and concrete actions the client can commit to."
+        
         messages = [
             {
                 "role": "system", 
@@ -136,7 +144,7 @@ Conversation style:
 - Help connect insights to actions
 - Use "I notice..." and "What do you think..." language
 
-Current conversation depth: {len(conversation_history)} exchanges"""
+Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
             }
         ]
         
@@ -194,52 +202,22 @@ Current conversation depth: {len(conversation_history)} exchanges"""
                 print(f"💡 Issue: {api_error}")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
-        # Extract questions from the response (improved extraction)
-        import re
+        # Check if we should drive to closure
+        if should_drive_to_closure(conversation_history, topic):
+            print(f"🔄 AI DEBUG: Driving conversation to closure")
+            closure_response = generate_closure_response(user_message, conversation_history, topic)
+            return {
+                'message': closure_response['message'],
+                'questions': closure_response['questions'],
+                'stage': closure_response['stage'],
+                'ai_powered': True
+            }
         
-        # Find all sentences that end with question marks
-        question_pattern = r'([A-Z][^.!?]*\?)'
-        found_questions = re.findall(question_pattern, ai_message)
-        
-        # Clean up and filter questions
-        questions = []
-        for q in found_questions:
-            q = q.strip().strip('- ').strip()
-            # Filter out very short, generic, or incomplete questions
-            if (len(q) > 20 and 
-                not q.lower().startswith('what do you think') and
-                not q.lower().startswith('how does this') and
-                '?' in q and
-                q != ai_message.strip()):  # Prevent copying entire message
-                questions.append(q)
-        
-        # Take last 2 questions if multiple found
-        questions = questions[-2:] if len(questions) > 2 else questions
-        
-        # Additional safety check - if questions are too similar to main message, clear them
-        if questions and any(len(q) > len(ai_message) * 0.8 for q in questions):
-            questions = []
-        
-        # If no good questions found, generate coaching questions based on content
-        if not questions:
-            if 'fear' in ai_message.lower() or 'afraid' in ai_message.lower():
-                questions = [
-                    "What would it look like to approach this with curiosity instead of fear?",
-                    "What evidence do you have that contradicts this fear?"
-                ]
-            elif 'procrastination' in ai_message.lower() or 'delay' in ai_message.lower():
-                questions = [
-                    "What would help you take the first step on a challenging task?",
-                    "What patterns do you notice about when procrastination shows up?"
-                ]
-            else:
-                questions = [
-                    "What patterns are you noticing as we explore this?",
-                    "What feels most important for you to understand about this situation?"
-                ]
+        # Generate complementary reflection questions (not extracted from response)
+        questions = generate_reflection_questions(user_message, ai_message, conversation_history, topic)
         
         print(f"✅ AI DEBUG: OpenAI response generated successfully")
-        print(f"🔍 AI DEBUG: Extracted {len(questions)} questions: {questions}")
+        print(f"🔍 AI DEBUG: Generated {len(questions)} questions: {questions}")
         return {
             'message': ai_message,
             'questions': questions,
@@ -253,10 +231,150 @@ Current conversation depth: {len(conversation_history)} exchanges"""
         traceback.print_exc()
         return get_enhanced_fallback_response(user_message, conversation_history, topic)
 
+def should_drive_to_closure(conversation_history, topic):
+    """Determine if conversation should move toward closure"""
+    conversation_depth = len(conversation_history)
+    
+    # Drive to closure after 8+ exchanges (4+ back-and-forth)
+    if conversation_depth >= 8:
+        return True
+    
+    # Look for signs of insight or readiness for action in recent messages
+    recent_user_messages = [entry['content'].lower() for entry in conversation_history[-4:] if entry['role'] == 'user']
+    
+    insight_indicators = [
+        'i realize', 'i understand', 'i see', 'that makes sense', 'i think', 'i believe',
+        'i need to', 'i should', 'i want to', 'i will', 'i can', 'now i know'
+    ]
+    
+    readiness_indicators = [
+        'what should i do', 'how do i', 'what steps', 'what action', 'what next',
+        'how can i start', 'where do i begin', 'what would you recommend'
+    ]
+    
+    for message in recent_user_messages:
+        if any(indicator in message for indicator in insight_indicators + readiness_indicators):
+            return True
+    
+    return False
+
+def generate_closure_response(user_message, conversation_history, topic):
+    """Generate a response that drives toward action and closure"""
+    user_lower = user_message.lower()
+    
+    # Analyze conversation for key insights
+    key_themes = []
+    if topic == 'leadership_growth':
+        if any('authentic' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
+            key_themes.append('authenticity')
+        if any('empathy' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
+            key_themes.append('empathy')
+    elif topic == 'performance_improvement':
+        if any('procrastination' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
+            key_themes.append('procrastination')
+        if any('fear' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
+            key_themes.append('fear of failure')
+    
+    # Generate closure message
+    if key_themes:
+        themes_text = ' and '.join(key_themes)
+        message = f"I can see we've explored some important ground around {themes_text}. You've shared valuable insights about yourself. As we wrap up our conversation, what feels like the most important takeaway for you? What's one specific action you'd like to commit to based on what we've discussed?"
+    else:
+        message = "We've covered a lot of meaningful territory in our conversation. As we bring this to a close, what stands out as the most valuable insight you've gained? What's one concrete step you'd like to take moving forward?"
+    
+    return {
+        'message': message,
+        'questions': [
+            "What's the one thing you want to remember from our conversation?",
+            "What will you do differently this week based on our discussion?"
+        ],
+        'stage': 'action_planning'
+    }
+
+def generate_reflection_questions(user_message, ai_response, conversation_history, topic):
+    """Generate contextual reflection questions based on conversation flow"""
+    user_lower = user_message.lower()
+    conversation_depth = len(conversation_history)
+    
+    # Check if we should drive to closure
+    if should_drive_to_closure(conversation_history, topic):
+        return [
+            "What's the most important insight you're taking from our conversation?",
+            "What specific action will you commit to taking this week?"
+        ]
+    
+    # Leadership-specific questions
+    if topic == 'leadership_growth':
+        if 'authentic' in user_lower and 'empathy' in user_lower:
+            return [
+                "What situations challenge your ability to stay authentic as a leader?",
+                "How do you balance empathy with making difficult decisions?"
+            ]
+        elif 'authentic' in user_lower:
+            return [
+                "What would your team say about your authenticity right now?",
+                "When do you find it hardest to be your true self at work?"
+            ]
+        elif 'leader' in user_lower or 'leadership' in user_lower:
+            return [
+                "What leadership moment are you most proud of and why?",
+                "What would change if you led with more confidence?"
+            ]
+    
+    # Performance improvement questions
+    elif topic == 'performance_improvement':
+        if 'procrastination' in user_lower or 'delay' in user_lower:
+            return [
+                "What would your ideal workday look like without procrastination?",
+                "What reward could motivate you to tackle difficult tasks immediately?"
+            ]
+        elif 'fear' in user_lower or 'afraid' in user_lower:
+            return [
+                "What would you attempt if you knew you couldn't fail?",
+                "How has fear served you in the past, and how might it be limiting you now?"
+            ]
+    
+    # Career development questions  
+    elif topic == 'career_development':
+        if 'goal' in user_lower or 'aspiration' in user_lower:
+            return [
+                "What skills do you need to develop to reach your next career milestone?",
+                "Who in your network could help accelerate your career growth?"
+            ]
+    
+    # Work-life balance questions
+    elif topic == 'work_life_balance':
+        if 'balance' in user_lower or 'time' in user_lower:
+            return [
+                "What boundaries would help you protect your personal time?",
+                "What would you do with an extra hour each day?"
+            ]
+    
+    # Context-aware questions based on conversation depth
+    if conversation_depth <= 2:  # Early conversation
+        return [
+            "What outcome would make this conversation most valuable for you?",
+            "What's the biggest insight you'd like to gain about yourself?"
+        ]
+    elif conversation_depth <= 4:  # Mid conversation
+        return [
+            "What patterns are you starting to notice about yourself?",
+            "What assumption about yourself might be worth questioning?"
+        ]
+    else:  # Later conversation - start transitioning
+        return [
+            "What's becoming clearer to you as we explore this together?",
+            "What would taking action on this look like for you?"
+        ]
+
 def get_enhanced_fallback_response(user_message, conversation_history, topic):
     """Enhanced fallback with conversation context awareness"""
     user_lower = user_message.lower()
     conversation_depth = len(conversation_history)
+    
+    # Check if we should drive to closure
+    if should_drive_to_closure(conversation_history, topic):
+        return generate_closure_response(user_message, conversation_history, topic)
     
     # Analyze previous conversation for context and avoid repetition
     previous_topics = []
@@ -303,12 +421,10 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
     # Procrastination responses - vary based on conversation depth and mentions
     if any(word in user_lower for word in ['procrastination', 'procrastinate', 'putting off', 'delay', 'avoiding', 'struggle']):
         if procrastination_mentions == 0:  # First mention
+            message = "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?"
             return {
-                'message': "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?",
-                'questions': [
-                    "What tasks do you find yourself putting off most often?",
-                    "What might be underneath the procrastination - fear, perfectionism, or something else?"
-                ]
+                'message': message,
+                'questions': generate_reflection_questions(user_message, message, conversation_history, topic)
             }
         elif procrastination_mentions == 1:  # Second mention - dig deeper
             return {
