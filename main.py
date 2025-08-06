@@ -49,6 +49,60 @@ def init_db():
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
 
+def save_session_to_db(session_id, session_data):
+    """Save session to database"""
+    try:
+        conn = sqlite3.connect('coaching_sessions.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO sessions 
+            (id, user_id, topic, current_stage, conversation_history, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            session_id,
+            session_data.get('user_id'),
+            session_data.get('topic'),
+            session_data.get('stage'),
+            json.dumps(session_data.get('conversation_history', [])),
+            session_data.get('created_at'),
+            datetime.now().isoformat()
+        ))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Session {session_id} saved to database")
+    except Exception as e:
+        print(f"❌ Failed to save session to database: {e}")
+
+def load_session_from_db(session_id):
+    """Load session from database"""
+    try:
+        conn = sqlite3.connect('coaching_sessions.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM sessions WHERE id = ?', (session_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            session_data = {
+                'session_id': row[0],
+                'user_id': row[1],
+                'topic': row[2],
+                'stage': row[3],
+                'conversation_history': json.loads(row[4]) if row[4] else [],
+                'created_at': row[6]
+            }
+            print(f"✅ Session {session_id} loaded from database")
+            return session_data
+        else:
+            print(f"❌ Session {session_id} not found in database")
+            return None
+    except Exception as e:
+        print(f"❌ Failed to load session from database: {e}")
+        return None
+
 def get_ai_coaching_response(user_message, conversation_history, topic):
     """Generate AI-powered adaptive coaching response"""
     try:
@@ -416,8 +470,9 @@ def start_session():
             'created_at': datetime.now().isoformat()
         }
         
-        print(f"🔍 AI START_SESSION: Storing session in memory...")
+        print(f"🔍 AI START_SESSION: Storing session in memory and database...")
         sessions[session_id] = session_data
+        save_session_to_db(session_id, session_data)
         print(f"🔍 AI START_SESSION: Session stored. Total sessions: {len(sessions)}")
         
         print(f"🔍 AI START_SESSION: Creating response object...")
@@ -476,13 +531,22 @@ def send_message():
             print(f"❌ AI SEND_MESSAGE: Missing required fields")
             return jsonify({'error': 'Missing session_id or message'}), 400
         
-        # Check if session exists
-        if session_id not in sessions:
-            print(f"❌ AI SEND_MESSAGE: Session {session_id} not found")
+        # Check if session exists in memory first, then database
+        session = None
+        if session_id in sessions:
+            session = sessions[session_id]
+            print(f"🔍 AI SEND_MESSAGE: Session found in memory")
+        else:
+            print(f"🔍 AI SEND_MESSAGE: Session not in memory, checking database...")
+            session = load_session_from_db(session_id)
+            if session:
+                sessions[session_id] = session  # Cache in memory
+                print(f"🔍 AI SEND_MESSAGE: Session loaded from database and cached")
+        
+        if not session:
+            print(f"❌ AI SEND_MESSAGE: Session {session_id} not found in memory or database")
             print(f"🔍 Available sessions: {list(sessions.keys())}")
             return jsonify({'error': 'Session not found'}), 404
-        
-        session = sessions[session_id]
         print(f"🔍 AI SEND_MESSAGE: Session found, current topic: {session.get('topic')}")
         
         # Add user message to conversation history
@@ -560,6 +624,9 @@ def send_message():
             'content': response['message'],
             'timestamp': datetime.now().isoformat()
         })
+        
+        # Save updated session to database
+        save_session_to_db(session_id, session)
         
         # Update response with standard fields
         response.update({
