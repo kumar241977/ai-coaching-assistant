@@ -117,9 +117,9 @@ def get_ai_coaching_response(user_message, conversation_history, topic):
         conversation_depth = len(conversation_history)
         closure_guidance = ""
         
-        if conversation_depth >= 6:
+        if conversation_depth >= 8:
             closure_guidance = "\n\nIMPORTANT: This conversation is getting deep. Start transitioning toward insights and action. Help the client synthesize what they've learned and identify next steps."
-        elif conversation_depth >= 8:
+        elif conversation_depth >= 10:
             closure_guidance = "\n\nIMPORTANT: This conversation should move toward closure. Focus on key takeaways and concrete actions the client can commit to."
         
         messages = [
@@ -235,11 +235,14 @@ def should_drive_to_closure(conversation_history, topic):
     """Determine if conversation should move toward closure"""
     conversation_depth = len(conversation_history)
     
-    # Drive to closure after 8+ exchanges (4+ back-and-forth)
-    if conversation_depth >= 8:
+    # Drive to closure after 12+ exchanges (6+ back-and-forth)
+    if conversation_depth >= 12:
         return True
     
-    # Look for signs of insight or readiness for action in recent messages
+    # Look for signs of insight or readiness for action in recent messages, but only after minimum depth
+    if conversation_depth < 10:  # Don't close too early even with insights
+        return False
+    
     recent_user_messages = [entry['content'].lower() for entry in conversation_history[-4:] if entry['role'] == 'user']
     
     insight_indicators = [
@@ -298,10 +301,24 @@ def generate_reflection_questions(user_message, ai_response, conversation_histor
     
     # Check if we should drive to closure
     if should_drive_to_closure(conversation_history, topic):
-        return [
-            "What's the most important insight you're taking from our conversation?",
-            "What specific action will you commit to taking this week?"
+        # Vary closure questions to avoid repetition
+        closure_question_sets = [
+            [
+                "What's the most important insight you're taking from our conversation?",
+                "What specific action will you commit to taking this week?"
+            ],
+            [
+                "As we wrap up, what feels like the biggest breakthrough for you?",
+                "What's one thing you'll do differently based on our discussion?"
+            ],
+            [
+                "What would you like to remember most from our time together?",
+                "What concrete step will you take in the next few days?"
+            ]
         ]
+        # Use conversation depth to vary which set we use
+        set_index = (conversation_depth // 4) % len(closure_question_sets)
+        return closure_question_sets[set_index]
     
     # Leadership-specific questions
     if topic == 'leadership_growth':
@@ -356,15 +373,25 @@ def generate_reflection_questions(user_message, ai_response, conversation_histor
             "What outcome would make this conversation most valuable for you?",
             "What's the biggest insight you'd like to gain about yourself?"
         ]
-    elif conversation_depth <= 4:  # Mid conversation
+    elif conversation_depth <= 4:  # Early-mid conversation
         return [
             "What patterns are you starting to notice about yourself?",
             "What assumption about yourself might be worth questioning?"
         ]
-    else:  # Later conversation - start transitioning
+    elif conversation_depth <= 6:  # Mid conversation
         return [
             "What's becoming clearer to you as we explore this together?",
-            "What would taking action on this look like for you?"
+            "What connections are you making that you hadn't seen before?"
+        ]
+    elif conversation_depth <= 8:  # Later-mid conversation
+        return [
+            "How is your understanding of this situation evolving?",
+            "What would you like to explore more deeply?"
+        ]
+    else:  # Later conversation - start transitioning (but not closing yet)
+        return [
+            "What insights are crystallizing for you?",
+            "How might you apply what you're discovering?"
         ]
 
 def get_enhanced_fallback_response(user_message, conversation_history, topic):
