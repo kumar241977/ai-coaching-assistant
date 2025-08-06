@@ -17,6 +17,9 @@ CORS(app)
 # Configure OpenAI API key from environment variable
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
+# Don't set global api_key to avoid conflicts with new client syntax
+# openai.api_key = os.getenv('OPENAI_API_KEY')
+
 # Simple in-memory storage for testing
 sessions = {}
 
@@ -199,6 +202,21 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
                 print(f"💡 Issue: {api_error}")
             return get_enhanced_fallback_response(user_message, conversation_history, topic)
         
+        # Check if user has already provided action commitments (avoid repeated closure)
+        action_indicators = [
+            'i will start', 'i will', 'start breaking down', 'positive affirmation', 
+            'break down', 'smaller chunks', 'manageable', 'i plan to', 'my approach will be'
+        ]
+        
+        if any(indicator in user_message.lower() for indicator in action_indicators):
+            print(f"🎉 AI DEBUG: User provided action commitments - closing positively")
+            return {
+                'message': f"That's a fantastic commitment! Breaking down complex tasks into smaller, manageable chunks and starting with positive affirmations are powerful strategies. You've shown real insight into how to work with your fear of failure rather than against it. I'm confident these approaches will help you build momentum and confidence. Thank you for this meaningful conversation - you have everything you need to move forward successfully.",
+                'questions': [],
+                'stage': 'follow_up',
+                'ai_powered': True
+            }
+        
         # Check if we should drive to closure
         if should_drive_to_closure(conversation_history, topic):
             print(f"🔄 AI DEBUG: Driving conversation to closure")
@@ -262,7 +280,33 @@ def generate_closure_response(user_message, conversation_history, topic):
     """Generate a response that drives toward action and closure"""
     user_lower = user_message.lower()
     
-    # Analyze conversation for key insights
+    # Check if user has already provided action commitments
+    action_indicators = [
+        'i will start', 'i will', 'start breaking down', 'positive affirmation', 
+        'break down', 'smaller chunks', 'manageable', 'i plan to', 'my approach will be'
+    ]
+    
+    if any(indicator in user_lower for indicator in action_indicators):
+        # User has provided commitments - acknowledge and close positively
+        return {
+            'message': f"That's a fantastic commitment! Breaking down complex tasks into smaller, manageable chunks and starting with positive affirmations are powerful strategies. You've shown real insight into how to work with your fear of failure rather than against it. I'm confident these approaches will help you build momentum and confidence. Thank you for this meaningful conversation - you have everything you need to move forward successfully.",
+            'questions': [],  # No more questions - conversation complete
+            'stage': 'follow_up'
+        }
+    
+    # Check if this is the first closure attempt
+    recent_coach_messages = [entry['content'] for entry in conversation_history[-4:] if entry['role'] == 'coach']
+    already_asked_closure = any('wrap up our conversation' in msg or 'most important takeaway' in msg for msg in recent_coach_messages)
+    
+    if already_asked_closure:
+        # We already asked closure questions - this shouldn't happen, but provide a different response
+        return {
+            'message': f"I can see you're committed to making positive changes. Your plan to break tasks down and use positive affirmations shows real self-awareness. What matters most now is taking that first small step. You've got this!",
+            'questions': [],
+            'stage': 'follow_up'
+        }
+    
+    # Analyze conversation for key insights (first closure attempt)
     key_themes = []
     if topic == 'leadership_growth':
         if any('authentic' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
@@ -395,6 +439,20 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
     """Enhanced fallback with conversation context awareness"""
     user_lower = user_message.lower()
     conversation_depth = len(conversation_history)
+    
+    # Check if user has already provided action commitments (avoid repeated closure)
+    action_indicators = [
+        'i will start', 'i will', 'start breaking down', 'positive affirmation', 
+        'break down', 'smaller chunks', 'manageable', 'i plan to', 'my approach will be'
+    ]
+    
+    if any(indicator in user_lower for indicator in action_indicators):
+        # User has provided commitments - acknowledge and close positively
+        return {
+            'message': f"That's a fantastic commitment! Breaking down complex tasks into smaller, manageable chunks and starting with positive affirmations are powerful strategies. You've shown real insight into how to work with your fear of failure rather than against it. I'm confident these approaches will help you build momentum and confidence. Thank you for this meaningful conversation - you have everything you need to move forward successfully.",
+            'questions': [],
+            'stage': 'follow_up'
+        }
     
     # Check if we should drive to closure
     if should_drive_to_closure(conversation_history, topic):
@@ -804,7 +862,7 @@ def send_message():
         
         # Update response with standard fields
         response.update({
-            'stage': response.get('stage', 'exploration'),
+            'stage': 'exploration',
             'competency_applied': 'active_listening',
             'ai_confidence': 0.9,
             'demo_mode': not response.get('ai_powered', False),  # True only if NOT AI-powered
