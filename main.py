@@ -17,9 +17,6 @@ CORS(app)
 # Configure OpenAI API key from environment variable
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
-# Don't set global api_key to avoid conflicts with new client syntax
-# openai.api_key = os.getenv('OPENAI_API_KEY')
-
 # Simple in-memory storage for testing
 sessions = {}
 
@@ -807,7 +804,7 @@ def send_message():
         
         # Update response with standard fields
         response.update({
-            'stage': 'exploration',
+            'stage': response.get('stage', 'exploration'),
             'competency_applied': 'active_listening',
             'ai_confidence': 0.9,
             'demo_mode': not response.get('ai_powered', False),  # True only if NOT AI-powered
