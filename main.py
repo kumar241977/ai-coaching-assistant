@@ -46,6 +46,28 @@ def detect_readiness(text):
     ])
 
 
+def is_action_commitment(text):
+    """Detect positive, forward-looking commitment statements and avoid negatives like 'will not'."""
+    if not text:
+        return False
+    lower = text.lower()
+    # Explicit forward commitments
+    forward_patterns = [
+        'i will start', 'i will try', 'i will do', 'i will take', 'i will begin',
+        "i'm going to", 'i am going to', 'i plan to', 'my approach will be', 'i commit to'
+    ]
+    if any(p in lower for p in forward_patterns):
+        return True
+    # Avoid negations or capability doubts around 'will'
+    if 'i will' in lower:
+        if 'will not' in lower or "won't" in lower or 'not be able' in lower:
+            return False
+        # Require a verb indicating action shortly after 'i will'
+        import re
+        return re.search(r"\bi will\s+(start|try|do|take|begin|work on|focus on|commit|practice|apply)\b", lower) is not None
+    return False
+
+
 def determine_next_stage(current_stage, conversation_history, latest_user_message):
     """Determine next stage based on conversation depth and signals.
     Stages: intake -> exploration -> reflection -> action_planning -> follow_up
@@ -54,9 +76,7 @@ def determine_next_stage(current_stage, conversation_history, latest_user_messag
     current = current_stage or 'intake'
 
     # Commitment phrases move to follow_up from action_planning
-    commitment = any(p in (latest_user_message or '').lower() for p in [
-        'i will start', 'i will', 'i plan to', 'my approach will be', 'i am going to'
-    ])
+    commitment = is_action_commitment(latest_user_message)
 
     if current == 'intake':
         # Move to exploration after first substantive exchange or topic selection
@@ -283,12 +303,7 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
             return get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage)
         
         # Check if user has already provided action commitments (avoid repeated closure)
-        action_indicators = [
-            'i will start', 'i will', 'start breaking down', 'positive affirmation', 
-            'break down', 'smaller chunks', 'manageable', 'i plan to', 'my approach will be'
-        ]
-        
-        if any(indicator in user_message.lower() for indicator in action_indicators):
+        if is_action_commitment(user_message):
             print(f"🎉 AI DEBUG: User provided action commitments - closing positively")
             return {
                 'message': f"That's a fantastic commitment! Breaking down complex tasks into smaller, manageable chunks and starting with positive affirmations are powerful strategies. You've shown real insight into how to work with your fear of failure rather than against it. I'm confident these approaches will help you build momentum and confidence. Thank you for this meaningful conversation - you have everything you need to move forward successfully.",
@@ -577,12 +592,7 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic, cu
     conversation_depth = len(conversation_history)
     
     # Check if user has already provided action commitments (avoid repeated closure)
-    action_indicators = [
-        'i will start', 'i will', 'start breaking down', 'positive affirmation', 
-        'break down', 'smaller chunks', 'manageable', 'i plan to', 'my approach will be'
-    ]
-    
-    if any(indicator in user_lower for indicator in action_indicators):
+    if is_action_commitment(user_message):
         # User has provided commitments - acknowledge and close positively
         return {
             'message': f"That's a fantastic commitment! Breaking down complex tasks into smaller, manageable chunks and starting with positive affirmations are powerful strategies. You've shown real insight into how to work with your fear of failure rather than against it. I'm confident these approaches will help you build momentum and confidence. Thank you for this meaningful conversation - you have everything you need to move forward successfully.",
@@ -989,7 +999,7 @@ def send_message():
             
             topic = session.get('topic', 'performance improvement')
             conversation_history = session.get('conversation_history', [])
-            current_stage = session.get('stage') # Pass current stage
+            current_stage = next_stage_prediction  # Pass predicted next stage for better alignment
             
             try:
                 response = get_ai_coaching_response(user_message, conversation_history, topic, current_stage)
