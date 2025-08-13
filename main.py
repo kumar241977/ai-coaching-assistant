@@ -126,6 +126,12 @@ def init_db():
             )
         ''')
         
+        # Add 'status' column if missing (active|paused|completed)
+        cursor.execute("PRAGMA table_info(sessions)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'status' not in columns:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN status TEXT DEFAULT 'active'")
+        
         conn.commit()
         conn.close()
         print("✅ Database initialized successfully")
@@ -140,8 +146,8 @@ def save_session_to_db(session_id, session_data):
         
         cursor.execute('''
             INSERT OR REPLACE INTO sessions 
-            (id, user_id, topic, current_stage, conversation_history, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, user_id, topic, current_stage, conversation_history, created_at, updated_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             session_id,
             session_data.get('user_id'),
@@ -149,7 +155,8 @@ def save_session_to_db(session_id, session_data):
             session_data.get('stage'),
             json.dumps(session_data.get('conversation_history', [])),
             session_data.get('created_at'),
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            session_data.get('status', 'active')
         ))
         
         conn.commit()
@@ -169,13 +176,16 @@ def load_session_from_db(session_id):
         conn.close()
         
         if row:
+            # Determine column indices safely
+            # Schema: id, user_id, topic, current_stage, conversation_history, insights, actions, created_at, updated_at, status
             session_data = {
                 'session_id': row[0],
                 'user_id': row[1],
                 'topic': row[2],
                 'stage': row[3],
                 'conversation_history': json.loads(row[4]) if row[4] else [],
-                'created_at': row[6]
+                'created_at': row[7],
+                'status': row[9] if len(row) > 9 else 'active'
             }
             print(f"✅ Session {session_id} loaded from database")
             return session_data
@@ -856,7 +866,8 @@ def start_session():
             'conversation_history': [],
             'created_at': datetime.now().isoformat(),
             'closure_attempts': 0,
-            'last_questions': []
+            'last_questions': [],
+            'status': 'active' # Initialize status
         }
         
         print(f"🔍 AI START_SESSION: Storing session in memory and database...")
@@ -938,6 +949,11 @@ def send_message():
             return jsonify({'error': 'Session not found'}), 404
         print(f"🔍 AI SEND_MESSAGE: Session found, current topic: {session.get('topic')}")
         
+        # Auto-resume if paused and user sends a message
+        if session.get('status') == 'paused':
+            session['status'] = 'active'
+            print("🔄 AI SEND_MESSAGE: Auto-resuming paused session due to incoming message")
+
         # Add user message to conversation history
         session['conversation_history'].append({
             'role': 'user',
@@ -1049,7 +1065,8 @@ def send_message():
             'competency_applied': 'active_listening',
             'ai_confidence': 0.9,
             'demo_mode': not response.get('ai_powered', False),  # True only if NOT AI-powered
-            'emotional_analysis': {'primary_emotion': 'engaged', 'intensity': 0.7}
+            'emotional_analysis': {'primary_emotion': 'engaged', 'intensity': 0.7},
+            'status': session.get('status', 'active')
         })
         
         print(f"✅ AI SEND_MESSAGE: Response generated successfully")
@@ -1068,6 +1085,69 @@ def send_message():
             'questions': ["What would you like to explore?"],
             'stage': 'exploration'
         }), 500
+
+@app.route('/api/sessions', methods=['GET'])
+def list_sessions():
+    """List sessions for a given user_id with minimal info."""
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'user_id is required'}), 400
+        conn = sqlite3.connect('coaching_sessions.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, topic, current_stage, updated_at, status, created_at FROM sessions WHERE user_id = ? ORDER BY updated_at DESC', (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        items = []
+        for row in rows:
+            items.append({
+                'session_id': row[0],
+                'topic': row[1],
+                'stage': row[2],
+                'updated_at': row[3],
+                'status': row[4],
+                'created_at': row[5]
+            })
+        return jsonify({'sessions': items})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/session/<session_id>', methods=['GET'])
+def get_session(session_id):
+    session = sessions.get(session_id) or load_session_from_db(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    # Cache if loaded
+    sessions[session_id] = session
+    return jsonify(session)
+
+@app.route('/api/pause-session', methods=['POST'])
+def pause_session():
+    data = request.get_json(force=True)
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'session_id is required'}), 400
+    session = sessions.get(session_id) or load_session_from_db(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    session['status'] = 'paused'
+    sessions[session_id] = session
+    save_session_to_db(session_id, session)
+    return jsonify({'ok': True, 'session_id': session_id, 'status': 'paused'})
+
+@app.route('/api/resume-session', methods=['POST'])
+def resume_session():
+    data = request.get_json(force=True)
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'session_id is required'}), 400
+    session = sessions.get(session_id) or load_session_from_db(session_id)
+    if not session:
+        return jsonify({'error': 'Session not found'}), 404
+    session['status'] = 'active'
+    sessions[session_id] = session
+    save_session_to_db(session_id, session)
+    return jsonify({'ok': True, 'session_id': session_id, 'status': 'active'})
 
 if __name__ == '__main__':
     print("🚀 Starting AI-powered adaptive coaching app...")
