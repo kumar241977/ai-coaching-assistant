@@ -399,6 +399,38 @@ def generate_closure_response(user_message, conversation_history, topic):
         if any('fear' in entry['content'].lower() for entry in conversation_history if entry['role'] == 'user'):
             key_themes.append('fear of failure')
     
+    # Stage-aware, varied closure prompts
+    closure_variants = [
+        [
+            "What's the one thing you want to remember from our conversation?",
+            "What will you do differently this week based on our discussion?"
+        ],
+        [
+            "What feels like the most important takeaway for you?",
+            "What is one small, specific action you'll take in the next few days?"
+        ],
+        [
+            "What insight stands out most right now?",
+            "What support or accountability would help you follow through?"
+        ]
+    ]
+    
+    # Avoid repetition by checking the last questions asked (if available via sessions cache)
+    last_two_coach_entries = conversation_history[-6:]
+    previously_asked = []
+    for entry in last_two_coach_entries:
+        if entry['role'] == 'coach' and isinstance(entry.get('content'), str):
+            previously_asked.append(entry['content'])
+    
+    # Choose a variant that doesn't appear verbatim in recent coach messages
+    selected_questions = None
+    for variant in closure_variants:
+        if not any(q in ' '.join(previously_asked) for q in variant):
+            selected_questions = variant
+            break
+    if selected_questions is None:
+        selected_questions = closure_variants[(len(conversation_history) // 3) % len(closure_variants)]
+    
     # Generate closure message
     if key_themes:
         themes_text = ' and '.join(key_themes)
@@ -408,10 +440,7 @@ def generate_closure_response(user_message, conversation_history, topic):
     
     return {
         'message': message,
-        'questions': [
-            "What's the one thing you want to remember from our conversation?",
-            "What will you do differently this week based on our discussion?"
-        ],
+        'questions': selected_questions,
         'stage': 'action_planning'
     }
 
@@ -815,7 +844,9 @@ def start_session():
             'stage': 'intake',
             'topic': None,
             'conversation_history': [],
-            'created_at': datetime.now().isoformat()
+            'created_at': datetime.now().isoformat(),
+            'closure_attempts': 0,
+            'last_questions': []
         }
         
         print(f"🔍 AI START_SESSION: Storing session in memory and database...")
@@ -983,6 +1014,21 @@ def send_message():
             session['stage'] = response['stage']
         else:
             session['stage'] = next_stage_prediction
+        
+        # Track closure attempts and provide natural ending if repeated
+        if session['stage'] in ['action_planning', 'follow_up']:
+            session['closure_attempts'] = session.get('closure_attempts', 0) + 1
+            if session['closure_attempts'] >= 2 and session['stage'] != 'follow_up':
+                # Escalate to a natural close without more questions
+                response['message'] = (
+                    "Thank you for the depth you've brought to this conversation. You've identified meaningful insights and the next steps that matter. "
+                    "I'll leave you with confidence in your ability to follow through. If you'd like, we can check in next time on what you learned."
+                )
+                response['questions'] = []
+                session['stage'] = 'follow_up'
+        else:
+            # Reset attempts if not in closing phases
+            session['closure_attempts'] = 0
         
         # Save updated session to database
         save_session_to_db(session_id, session)
