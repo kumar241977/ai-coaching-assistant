@@ -23,6 +23,69 @@ openai_api_key = os.getenv('OPENAI_API_KEY')
 # Simple in-memory storage for testing
 sessions = {}
 
+# -------------------- Stage Flow Helpers --------------------
+def detect_insight(text):
+    """Heuristic to detect insight-oriented language."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(phrase in lower for phrase in [
+        'i realize', 'i understand', 'i see', 'that makes sense', 'i think', 'i believe',
+        'i learned', 'i discovered', 'now i know', 'now i see', 'looking back'
+    ])
+
+
+def detect_readiness(text):
+    """Heuristic to detect readiness for action."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(phrase in lower for phrase in [
+        'what should i do', 'what steps', 'what action', 'how can i start', 'where do i begin',
+        'what next', 'how do i', 'how can i', 'plan to', 'i will', 'i am going to'
+    ])
+
+
+def determine_next_stage(current_stage, conversation_history, latest_user_message):
+    """Determine next stage based on conversation depth and signals.
+    Stages: intake -> exploration -> reflection -> action_planning -> follow_up
+    """
+    depth = len(conversation_history)
+    current = current_stage or 'intake'
+
+    # Commitment phrases move to follow_up from action_planning
+    commitment = any(p in (latest_user_message or '').lower() for p in [
+        'i will start', 'i will', 'i plan to', 'my approach will be', 'i am going to'
+    ])
+
+    if current == 'intake':
+        # Move to exploration after first substantive exchange or topic selection
+        if depth >= 2 or detect_insight(latest_user_message):
+            return 'exploration'
+        return 'intake'
+
+    if current == 'exploration':
+        # Move to reflection after some depth or insight detection
+        if depth >= 6 or detect_insight(latest_user_message):
+            return 'reflection'
+        return 'exploration'
+
+    if current == 'reflection':
+        # Move to action planning when readiness detected or depth grows
+        if depth >= 10 or detect_readiness(latest_user_message):
+            return 'action_planning'
+        return 'reflection'
+
+    if current == 'action_planning':
+        # Commitments advance to follow-up
+        if commitment:
+            return 'follow_up'
+        return 'action_planning'
+
+    # Default: keep current or move cautiously forward
+    return current
+
+# -------------------- Existing DB helpers --------------------
 def init_db():
     """Initialize database"""
     try:
@@ -103,24 +166,39 @@ def load_session_from_db(session_id):
         print(f"❌ Failed to load session from database: {e}")
         return None
 
-def get_ai_coaching_response(user_message, conversation_history, topic):
+def get_ai_coaching_response(user_message, conversation_history, topic, current_stage=None):
     """Generate AI-powered adaptive coaching response"""
     try:
         # Check if OpenAI API key is available
         if not openai_api_key:
             print("⚠️ No OpenAI API key found, using enhanced fallback")
-            return get_enhanced_fallback_response(user_message, conversation_history, topic)
+            return get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage)
         
         print(f"🔑 OpenAI API key configured: {openai_api_key[:10]}...{openai_api_key[-4:]}")
         
         # Build conversation context
         conversation_depth = len(conversation_history)
         closure_guidance = ""
-        
-        if conversation_depth >= 8:
-            closure_guidance = "\n\nIMPORTANT: This conversation is getting deep. Start transitioning toward insights and action. Help the client synthesize what they've learned and identify next steps."
-        elif conversation_depth >= 10:
+
+        # Correct ordering so higher threshold is evaluated first
+        if conversation_depth >= 10:
             closure_guidance = "\n\nIMPORTANT: This conversation should move toward closure. Focus on key takeaways and concrete actions the client can commit to."
+        elif conversation_depth >= 8:
+            closure_guidance = "\n\nIMPORTANT: This conversation is getting deep. Start transitioning toward insights and action. Help the client synthesize what they've learned and identify next steps."
+
+        stage = (current_stage or 'intake')
+        if stage == 'intake':
+            stage_instruction = "Current stage: Intake. Establish rapport, clarify goals, and invite the client to set the focus for today. Ask open, welcoming questions."
+        elif stage == 'exploration':
+            stage_instruction = "Current stage: Exploration. Explore context and patterns, reflect emotions, and deepen awareness without rushing to solutions."
+        elif stage == 'reflection':
+            stage_instruction = "Current stage: Reflection. Help synthesize insights and name learnings; link patterns to desired shifts. Prepare gently for action."
+        elif stage == 'action_planning':
+            stage_instruction = "Current stage: Action Planning. Co-create small, specific next steps, success criteria, and accountability. Keep ownership with the client."
+        elif stage == 'follow_up':
+            stage_instruction = "Current stage: Follow-up. Acknowledge progress and commitments, invite brief reflection, and close with empowerment."
+        else:
+            stage_instruction = "Current stage: Exploration."
         
         messages = [
             {
@@ -136,6 +214,8 @@ Key coaching principles:
 - Never give direct advice - guide discovery
 
 The client is working on: {topic}
+
+{stage_instruction}
 
 Conversation style:
 - Warm, professional, supportive
@@ -189,7 +269,7 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
                 print("✅ AI DEBUG: Direct HTTP request successful")
             else:
                 print(f"❌ HTTP request failed: {http_response.status_code} - {http_response.text}")
-                return get_enhanced_fallback_response(user_message, conversation_history, topic)
+                return get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage)
                 
         except Exception as api_error:
             print(f"❌ AI DEBUG: OpenAI API request failed: {api_error}")
@@ -200,7 +280,7 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
                 print("💡 Issue: API key authentication failed")
             else:
                 print(f"💡 Issue: {api_error}")
-            return get_enhanced_fallback_response(user_message, conversation_history, topic)
+            return get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage)
         
         # Check if user has already provided action commitments (avoid repeated closure)
         action_indicators = [
@@ -229,7 +309,7 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
             }
         
         # Generate complementary reflection questions (not extracted from response)
-        questions = generate_reflection_questions(user_message, ai_message, conversation_history, topic)
+        questions = generate_reflection_questions(user_message, ai_message, conversation_history, topic, stage)
         
         print(f"✅ AI DEBUG: OpenAI response generated successfully")
         print(f"🔍 AI DEBUG: Generated {len(questions)} questions: {questions}")
@@ -244,18 +324,18 @@ Current conversation depth: {conversation_depth} exchanges{closure_guidance}"""
         print(f"❌ AI DEBUG: Error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
-        return get_enhanced_fallback_response(user_message, conversation_history, topic)
+        return get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage)
 
 def should_drive_to_closure(conversation_history, topic):
     """Determine if conversation should move toward closure"""
     conversation_depth = len(conversation_history)
     
-    # Drive to closure after 12+ exchanges (6+ back-and-forth)
-    if conversation_depth >= 12:
+    # Drive to closure after 14+ exchanges (7+ back-and-forth)
+    if conversation_depth >= 14:
         return True
     
     # Look for signs of insight or readiness for action in recent messages, but only after minimum depth
-    if conversation_depth < 10:  # Don't close too early even with insights
+    if conversation_depth < 12:  # Don't close too early even with insights
         return False
     
     recent_user_messages = [entry['content'].lower() for entry in conversation_history[-4:] if entry['role'] == 'user']
@@ -335,7 +415,7 @@ def generate_closure_response(user_message, conversation_history, topic):
         'stage': 'action_planning'
     }
 
-def generate_reflection_questions(user_message, ai_response, conversation_history, topic):
+def generate_reflection_questions(user_message, ai_response, conversation_history, topic, stage):
     """Generate contextual reflection questions based on conversation flow"""
     user_lower = user_message.lower()
     conversation_depth = len(conversation_history)
@@ -360,6 +440,33 @@ def generate_reflection_questions(user_message, ai_response, conversation_histor
         # Use conversation depth to vary which set we use
         set_index = (conversation_depth // 4) % len(closure_question_sets)
         return closure_question_sets[set_index]
+    
+    # Stage-specific guidance
+    if stage == 'intake':
+        return [
+            "What brings you to coaching right now?",
+            "What would make this session most valuable for you?"
+        ]
+    elif stage == 'exploration':
+        return [
+            "What patterns are you noticing as we explore this?",
+            "What assumptions might be worth challenging here?"
+        ]
+    elif stage == 'reflection':
+        return [
+            "What insights are becoming clearer for you?",
+            "How does this connect to what matters most to you?"
+        ]
+    elif stage == 'action_planning':
+        return [
+            "What is one small, specific step you will take next?",
+            "How will you know you've made progress this week?"
+        ]
+    elif stage == 'follow_up':
+        return [
+            "What progress have you noticed since our last conversation?",
+            "What support or accountability would be helpful now?"
+        ]
     
     # Leadership-specific questions
     if topic == 'leadership_growth':
@@ -435,7 +542,7 @@ def generate_reflection_questions(user_message, ai_response, conversation_histor
             "How might you apply what you're discovering?"
         ]
 
-def get_enhanced_fallback_response(user_message, conversation_history, topic):
+def get_enhanced_fallback_response(user_message, conversation_history, topic, current_stage=None):
     """Enhanced fallback with conversation context awareness"""
     user_lower = user_message.lower()
     conversation_depth = len(conversation_history)
@@ -506,7 +613,7 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
             message = "I hear that procrastination is showing up as a significant challenge for you. That takes courage to name directly. What do you notice about when procrastination tends to happen most for you?"
             return {
                 'message': message,
-                'questions': generate_reflection_questions(user_message, message, conversation_history, topic)
+                'questions': generate_reflection_questions(user_message, message, conversation_history, topic, current_stage or 'exploration')
             }
         elif procrastination_mentions == 1:  # Second mention - dig deeper
             return {
@@ -636,6 +743,15 @@ def get_enhanced_fallback_response(user_message, conversation_history, topic):
             ]
         }
     elif conversation_depth <= 2:
+        # Tailor early-stage questions to the current stage when available
+        if (current_stage or 'intake') == 'intake':
+            return {
+                'message': "Thank you for sharing that with me. What would you like to focus on in this session so it feels most valuable to you?",
+                'questions': [
+                    "What brings you to coaching right now?",
+                    "What outcome would make today successful for you?"
+                ]
+            }
         return {
             'message': "Thank you for sharing that with me. I can sense there's a lot beneath the surface of what you're describing. What feels most important for us to explore together right now?",
             'questions': [
@@ -788,6 +904,10 @@ def send_message():
             'timestamp': datetime.now().isoformat()
         })
         
+        # Determine next stage pre-AI for guidance
+        current_stage = session.get('stage', 'intake')
+        next_stage_prediction = determine_next_stage(current_stage, session.get('conversation_history', []), user_message)
+        
         # Process different message types
         if message_type == 'topic_selection':
             print(f"🔍 AI SEND_MESSAGE: Processing topic selection: {user_message}")
@@ -838,9 +958,10 @@ def send_message():
             
             topic = session.get('topic', 'performance improvement')
             conversation_history = session.get('conversation_history', [])
+            current_stage = session.get('stage') # Pass current stage
             
             try:
-                response = get_ai_coaching_response(user_message, conversation_history, topic)
+                response = get_ai_coaching_response(user_message, conversation_history, topic, current_stage)
                 print(f"🔍 AI SEND_MESSAGE: AI response generated: {response.get('ai_powered', False)}")
             except Exception as ai_error:
                 print(f"❌ AI SEND_MESSAGE: AI response generation failed: {ai_error}")
@@ -857,12 +978,18 @@ def send_message():
             'timestamp': datetime.now().isoformat()
         })
         
+        # Persist stage carefully: prefer explicit stage from response if provided, else use predicted next stage
+        if 'stage' in response and response['stage']:
+            session['stage'] = response['stage']
+        else:
+            session['stage'] = next_stage_prediction
+        
         # Save updated session to database
         save_session_to_db(session_id, session)
         
-        # Update response with standard fields
+        # Update response with standard fields without overriding explicit stage
         response.update({
-            'stage': 'exploration',
+            'stage': session['stage'],
             'competency_applied': 'active_listening',
             'ai_confidence': 0.9,
             'demo_mode': not response.get('ai_powered', False),  # True only if NOT AI-powered
