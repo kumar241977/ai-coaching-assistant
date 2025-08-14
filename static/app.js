@@ -13,6 +13,13 @@ class CoachingAssistant {
         console.log('🚀 DEBUG: CoachingAssistant initializing...');
         this.bindEvents();
         this.showWelcomeScreen();
+        // Load sessions list on landing
+        const storedUserId = window.localStorage.getItem('coaching_user_id');
+        this.userId = storedUserId || this.generateUserId();
+        if (!storedUserId) {
+            try { window.localStorage.setItem('coaching_user_id', this.userId); } catch (_) {}
+        }
+        this.fetchAndRenderSessions();
         console.log('✅ DEBUG: CoachingAssistant initialized');
     }
     
@@ -33,7 +40,7 @@ class CoachingAssistant {
             });
         });
         
-        // New session button
+        // New session button (header)
         document.getElementById('new-session-btn').addEventListener('click', () => {
             // Clear chat and reset to welcome screen
             document.getElementById('chat-messages').innerHTML = '';
@@ -42,6 +49,45 @@ class CoachingAssistant {
             this.currentStage = 'intake';
             this.updateSessionStatus('Ready to start');
         });
+
+        // Pause current session
+        const pauseBtn = document.getElementById('pause-session-btn');
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', async () => {
+                if (!this.sessionId) {
+                    alert('No active session to pause.');
+                    return;
+                }
+                try {
+                    await fetch('/api/pause-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: this.sessionId })
+                    });
+                    this.updateSessionStatus('Paused');
+                    await this.fetchAndRenderSessions();
+                    this.showWelcomeScreen();
+                } catch (e) {
+                    console.error('❌ DEBUG: Failed to pause session', e);
+                    alert('Failed to pause session');
+                }
+            });
+        }
+
+        // Start New Session (landing sessions panel)
+        const startNewLanding = document.getElementById('start-new-session-btn');
+        if (startNewLanding) {
+            startNewLanding.addEventListener('click', async () => {
+                await this.startNewSession();
+                this.showChatInterface();
+            });
+        }
+
+        // Refresh sessions list
+        const refreshBtn = document.getElementById('refresh-sessions-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.fetchAndRenderSessions());
+        }
         
         // Send message
         document.getElementById('send-btn').addEventListener('click', () => {
@@ -51,7 +97,7 @@ class CoachingAssistant {
         });
         
         // Enter key to send message
-        document.getElementById('user-input').addEventListener('keypress', (e) => {
+        document.getElementById('user-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !this.isLoading) {
                 e.preventDefault();
                 this.sendMessage();
@@ -68,6 +114,106 @@ class CoachingAssistant {
         document.getElementById('back-to-chat').addEventListener('click', () => {
             this.showChatInterface();
         });
+    }
+
+    // ---------- Sessions List UI ----------
+    async fetchAndRenderSessions() {
+        try {
+            const url = `/api/sessions?user_id=${encodeURIComponent(this.userId)}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+            this.renderSessionsList(sessions);
+        } catch (e) {
+            console.error('❌ DEBUG: Failed to fetch sessions', e);
+        }
+    }
+
+    renderSessionsList(sessions) {
+        const list = document.getElementById('sessions-list');
+        if (!list) return;
+        list.innerHTML = '';
+
+        if (!sessions.length) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.innerHTML = '<i class="fas fa-comments"></i><p>No prior sessions yet. Start a new session to begin.</p>';
+            list.appendChild(empty);
+            return;
+        }
+
+        sessions.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'session-item';
+
+            const meta = document.createElement('div');
+            meta.className = 'session-meta';
+            const topic = document.createElement('div');
+            topic.className = 'session-topic';
+            topic.textContent = (s.topic || 'No topic yet').replaceAll('_', ' ');
+            const dates = document.createElement('div');
+            dates.className = 'session-dates';
+            dates.textContent = `Updated: ${new Date(s.updated_at).toLocaleString()} • Created: ${new Date(s.created_at).toLocaleString()}`;
+            meta.appendChild(topic);
+            meta.appendChild(dates);
+
+            const status = document.createElement('span');
+            status.className = `badge ${s.status || 'active'}`;
+            status.textContent = s.status || 'active';
+
+            const actions = document.createElement('div');
+
+            const resumeBtn = document.createElement('button');
+            resumeBtn.className = 'btn btn-secondary';
+            const isPaused = (s.status || '').toLowerCase() === 'paused';
+            resumeBtn.innerHTML = '<i class="fas fa-play"></i> ' + (isPaused ? 'Resume' : 'Open');
+            resumeBtn.onclick = () => this.resumeSessionAndOpen(s.session_id);
+
+            actions.appendChild(resumeBtn);
+
+            item.appendChild(meta);
+            item.appendChild(status);
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+    }
+
+    async resumeSessionAndOpen(sessionId) {
+        try {
+            // Mark session active
+            await fetch('/api/resume-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+
+            // Load session details including history
+            const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`);
+            const session = await res.json();
+            if (session && session.session_id) {
+                this.sessionId = session.session_id;
+                this.userId = session.user_id || this.userId || this.generateUserId();
+                try { window.localStorage.setItem('coaching_user_id', this.userId); } catch (_) {}
+                this.currentStage = session.stage || 'exploration';
+                this.updateSessionStatus('Session Active');
+
+                // Render chat interface and history
+                this.showChatInterface();
+                const container = document.getElementById('chat-messages');
+                container.innerHTML = '';
+                const history = Array.isArray(session.conversation_history) ? session.conversation_history : [];
+                history.forEach(entry => {
+                    const role = entry.role === 'coach' ? 'coach' : 'user';
+                    this.addMessage(role, entry.content);
+                });
+
+                this.updateStageIndicator(this.currentStage);
+                await this.fetchAndRenderSessions();
+            }
+        } catch (e) {
+            console.error('❌ DEBUG: Failed to resume session', e);
+            alert('Failed to resume session.');
+        }
     }
     
     async startNewSession() {
@@ -108,6 +254,7 @@ class CoachingAssistant {
             if (data.session_id) {
                 this.sessionId = data.session_id;
                 this.userId = data.user_id;
+                try { window.localStorage.setItem('coaching_user_id', this.userId); } catch (_) {}
                 this.currentStage = 'intake';
                 
                 console.log('✅ DEBUG: Session started successfully:', this.sessionId);
@@ -123,6 +270,8 @@ class CoachingAssistant {
             this.showError('Failed to start session. Please try again.');
         } finally {
             this.showLoading(false);
+            // Refresh sessions panel
+            this.fetchAndRenderSessions();
         }
     }
     
