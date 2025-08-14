@@ -88,6 +88,23 @@ class CoachingAssistant {
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.fetchAndRenderSessions());
         }
+
+        // Help: relink panel
+        const helpRelink = document.getElementById('help-relink-btn');
+        const relinkClose = document.getElementById('relink-close');
+        if (helpRelink) {
+            helpRelink.addEventListener('click', async () => {
+                const panel = document.getElementById('relink-panel');
+                if (panel) panel.style.display = 'block';
+                await this.fetchRecentPausedSessions();
+            });
+        }
+        if (relinkClose) {
+            relinkClose.addEventListener('click', () => {
+                const panel = document.getElementById('relink-panel');
+                if (panel) panel.style.display = 'none';
+            });
+        }
         
         // Send message
         document.getElementById('send-btn').addEventListener('click', () => {
@@ -875,6 +892,75 @@ class CoachingAssistant {
     
     generateUserId() {
         return 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    }
+
+    async fetchRecentPausedSessions() {
+        try {
+            const res = await fetch('/api/recent-sessions?status=paused&limit=10');
+            const data = await res.json();
+            const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+            this.renderRelinkList(sessions);
+        } catch (e) {
+            console.error('❌ DEBUG: Failed to fetch recent paused sessions', e);
+        }
+    }
+
+    renderRelinkList(sessions) {
+        const list = document.getElementById('relink-list');
+        if (!list) return;
+        list.classList.remove('empty-state');
+        list.innerHTML = '';
+        if (!sessions.length) {
+            list.classList.add('empty-state');
+            list.innerHTML = '<i class="fas fa-comments"></i><p>No recent paused sessions found.</p>';
+            return;
+        }
+        sessions.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'session-item';
+            const meta = document.createElement('div');
+            meta.className = 'session-meta';
+            const topic = document.createElement('div');
+            topic.className = 'session-topic';
+            topic.textContent = `${(s.topic || 'No topic').replaceAll('_',' ')} • ${s.stage || ''}`;
+            const dates = document.createElement('div');
+            dates.className = 'session-dates';
+            const sidShort = s.session_id.slice(0,8) + '…' + s.session_id.slice(-4);
+            dates.textContent = `ID: ${sidShort} • Updated: ${new Date(s.updated_at).toLocaleString()}`;
+            meta.appendChild(topic);
+            meta.appendChild(dates);
+            const status = document.createElement('span');
+            status.className = `badge ${s.status || 'paused'}`;
+            status.textContent = s.status || 'paused';
+            const actions = document.createElement('div');
+            const linkBtn = document.createElement('button');
+            linkBtn.className = 'btn btn-primary';
+            linkBtn.innerHTML = '<i class="fas fa-link"></i> Link to me';
+            linkBtn.onclick = () => this.relinkSessionToMe(s.session_id);
+            actions.appendChild(linkBtn);
+            item.appendChild(meta);
+            item.appendChild(status);
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+    }
+
+    async relinkSessionToMe(sessionId) {
+        try {
+            const uid = this.userId || window.localStorage.getItem('coaching_user_id') || this.generateUserId();
+            await fetch('/api/relink-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId, new_user_id: uid })
+            });
+            await this.fetchAndRenderSessions();
+            const panel = document.getElementById('relink-panel');
+            if (panel) panel.style.display = 'none';
+            alert('Session linked to your account. You can now Resume it.');
+        } catch (e) {
+            console.error('❌ DEBUG: Failed to relink session', e);
+            alert('Failed to relink session.');
+        }
     }
 }
 
