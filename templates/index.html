@@ -19,6 +19,9 @@
                 </div>
                 <div class="session-info">
                     <span id="session-status">Ready to start</span>
+                    <button id="pause-session-btn" class="btn btn-secondary">
+                        <i class="fas fa-pause"></i> Pause
+                    </button>
                     <button id="new-session-btn" class="btn btn-primary">
                         <i class="fas fa-plus"></i> New Session
                     </button>
@@ -62,52 +65,84 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Sessions Panel -->
+                    <div class="sessions-panel">
+                        <div class="sessions-header">
+                            <h3>Your Recent Sessions</h3>
+                            <div class="sessions-actions">
+                                <button id="start-new-session-btn" class="btn btn-primary"><i class="fas fa-plus"></i> Start New Session</button>
+                                <button id="refresh-sessions-btn" class="btn btn-secondary"><i class="fas fa-rotate"></i> Refresh</button>
+                            </div>
+                        </div>
+                        <div id="sessions-list" class="sessions-list">
+                            <div class="empty-state">
+                                <i class="fas fa-comments"></i>
+                                <p>No prior sessions yet. Start a new session to begin.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Chat Interface -->
             <div id="chat-interface" class="chat-interface" style="display: none;">
-                <!-- Stage Progress -->
-                <div class="stage-progress">
-                    <div class="stage active" data-stage="intake">
-                        <i class="fas fa-door-open"></i>
-                        <span>Intake</span>
-                    </div>
-                    <div class="stage" data-stage="exploration">
-                        <i class="fas fa-search"></i>
-                        <span>Exploration</span>
-                    </div>
-                    <div class="stage" data-stage="reflection">
-                        <i class="fas fa-lightbulb"></i>
-                        <span>Reflection</span>
-                    </div>
-                    <div class="stage" data-stage="action_planning">
-                        <i class="fas fa-tasks"></i>
-                        <span>Action Planning</span>
-                    </div>
-                    <div class="stage" data-stage="follow_up">
-                        <i class="fas fa-check"></i>
-                        <span>Follow-up</span>
+                <!-- Conversation Stage Indicator -->
+                <div class="stage-indicator">
+                    <div class="stages">
+                        <div class="stage active" data-stage="intake">
+                            <div class="stage-icon"><i class="fas fa-door-open"></i></div>
+                            <span>Intake</span>
+                        </div>
+                        <div class="stage" data-stage="exploration">
+                            <div class="stage-icon"><i class="fas fa-search"></i></div>
+                            <span>Exploration</span>
+                        </div>
+                        <div class="stage" data-stage="reflection">
+                            <div class="stage-icon"><i class="fas fa-lightbulb"></i></div>
+                            <span>Reflection</span>
+                        </div>
+                        <div class="stage" data-stage="action_planning">
+                            <div class="stage-icon"><i class="fas fa-tasks"></i></div>
+                            <span>Action Planning</span>
+                        </div>
+                        <div class="stage" data-stage="follow_up">
+                            <div class="stage-icon"><i class="fas fa-check-circle"></i></div>
+                            <span>Follow-up</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Chat Messages -->
-                <div class="chat-container">
-                    <div id="chat-messages" class="chat-messages"></div>
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Messages will be dynamically added here -->
+                </div>
+
+                <!-- Emotional Analysis Display -->
+                <div class="emotional-analysis" id="emotional-analysis" style="display: none;">
+                    <div class="analysis-content">
+                        <span class="analysis-label">Emotional Tone:</span>
+                        <span class="sentiment" id="sentiment-indicator"></span>
+                        <span class="emotion" id="primary-emotion"></span>
+                    </div>
                 </div>
 
                 <!-- Input Area -->
                 <div class="input-area">
                     <div class="input-container">
-                        <textarea id="user-input" 
-                                placeholder="Share your thoughts, challenges, or questions..." 
-                                maxlength="1000"></textarea>
-                        <button id="send-btn" class="send-btn">
+                        <textarea 
+                            id="user-input" 
+                            placeholder="Share your thoughts..." 
+                            rows="3"
+                        ></textarea>
+                        <button id="send-btn" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
-                    <div class="character-count">
-                        <span id="char-count">0</span>/1000
+                    
+                    <!-- Quick Response Options -->
+                    <div class="quick-responses" id="quick-responses" style="display: none;">
+                        <!-- Quick response buttons will be added dynamically -->
                     </div>
                 </div>
             </div>
@@ -115,39 +150,28 @@
             <!-- Action Planning Form -->
             <div id="action-form" class="action-form" style="display: none;">
                 <div class="form-content">
-                    <h2><i class="fas fa-tasks"></i> Create Your Action Plan</h2>
-                    <p>Let's turn your insights into concrete actions. Fill out the details below:</p>
-                    
+                    <h3><i class="fas fa-target"></i> Action Planning</h3>
                     <form id="action-commitment-form">
                         <div class="form-group">
                             <label for="action-input">What specific action will you take?</label>
-                            <textarea id="action-input" required 
-                                    placeholder="Describe the specific action you will take..."></textarea>
+                            <textarea id="action-input" required></textarea>
                         </div>
-                        
                         <div class="form-group">
                             <label for="deadline-input">By when will you complete this?</label>
                             <input type="date" id="deadline-input" required>
                         </div>
-                        
                         <div class="form-group">
                             <label for="success-criteria">How will you know you've succeeded?</label>
-                            <textarea id="success-criteria" 
-                                    placeholder="Define what success looks like..."></textarea>
+                            <textarea id="success-criteria"></textarea>
                         </div>
-                        
                         <div class="form-group">
-                            <label for="obstacles">What obstacles might you face?</label>
-                            <textarea id="obstacles" 
-                                    placeholder="Identify potential challenges..."></textarea>
+                            <label for="obstacles">What obstacles might you encounter?</label>
+                            <textarea id="obstacles"></textarea>
                         </div>
-                        
                         <div class="form-group">
                             <label for="support-needed">What support do you need?</label>
-                            <textarea id="support-needed" 
-                                    placeholder="What help or resources would be useful..."></textarea>
+                            <textarea id="support-needed"></textarea>
                         </div>
-                        
                         <div class="form-actions">
                             <button type="button" id="back-to-chat" class="btn btn-secondary">
                                 <i class="fas fa-arrow-left"></i> Back to Chat
@@ -161,17 +185,12 @@
             </div>
         </main>
 
-        <!-- Loading Spinner -->
+        <!-- Loading Indicator -->
         <div id="loading" class="loading" style="display: none;">
             <div class="spinner"></div>
-            <p>Thinking...</p>
         </div>
     </div>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
-    <script>
-        // Initialize the coaching assistant
-        const coachingAssistant = new CoachingAssistant();
-    </script>
 </body>
-</html>
+</html> 
