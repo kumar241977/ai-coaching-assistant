@@ -198,6 +198,85 @@ body {
     line-height: 1.5;
 }
 
+/* Sessions Panel */
+.sessions-panel {
+    margin-top: 2.5rem;
+    text-align: left;
+}
+
+.sessions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.sessions-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.sessions-list {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem;
+}
+
+.session-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.session-item:last-child {
+    border-bottom: none;
+}
+
+.session-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.session-topic {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.session-dates {
+    font-size: 0.85rem;
+    color: #718096;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.badge.active { background: #e6fffa; color: #0b8f84; border: 1px solid #b2f5ea; }
+.badge.paused { background: #fffbea; color: #8a6d1f; border: 1px solid #fef3c7; }
+.badge.completed { background: #e6ffed; color: #1b7f2a; border: 1px solid #c6f6d5; }
+
+.empty-state {
+    padding: 2rem;
+    text-align: center;
+    color: #718096;
+}
+
+.empty-state i {
+    font-size: 2rem;
+    color: #cbd5e0;
+    margin-bottom: 0.5rem;
+}
+
 /* Chat Interface */
 .chat-interface {
     background: rgba(255, 255, 255, 0.95);
