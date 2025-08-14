@@ -844,6 +844,7 @@ def start_session():
         print(f"🔍 AI START_SESSION: Request content type: {request.content_type}")
         
         # Check if request has JSON data
+        data = None
         if request.content_type and 'application/json' in request.content_type:
             data = request.get_json()
             print(f"🔍 AI START_SESSION: Request data: {data}")
@@ -851,7 +852,8 @@ def start_session():
             print(f"🔍 AI START_SESSION: No JSON data in request")
         
         print(f"🔍 AI START_SESSION: Generating IDs...")
-        user_id = str(uuid.uuid4())
+        provided_user_id = (data or {}).get('user_id')
+        user_id = provided_user_id or str(uuid.uuid4())
         session_id = str(uuid.uuid4())
         
         print(f"🔍 AI START_SESSION: user_id={user_id}, session_id={session_id}")
@@ -1148,6 +1150,85 @@ def resume_session():
     sessions[session_id] = session
     save_session_to_db(session_id, session)
     return jsonify({'ok': True, 'session_id': session_id, 'status': 'active'})
+
+# New route: resume latest session for a user
+@app.route('/api/resume-latest', methods=['POST'])
+def resume_latest():
+    try:
+        data = request.get_json(force=True)
+        user_id = data.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'user_id is required'}), 400
+        existing = get_latest_session_for_user(user_id)
+        if not existing:
+            return jsonify({'error': 'No prior sessions found for this user'}), 404
+        existing['status'] = 'active'
+        sessions[existing['session_id']] = existing
+        save_session_to_db(existing['session_id'], existing)
+        return jsonify({
+            'ok': True,
+            'session_id': existing['session_id'],
+            'status': 'active',
+            'stage': existing.get('stage'),
+            'topic': existing.get('topic')
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Relink an existing session to a different user_id
+@app.route('/api/relink-session', methods=['POST'])
+def relink_session():
+    try:
+        data = request.get_json(force=True)
+        session_id = data.get('session_id')
+        new_user_id = data.get('new_user_id')
+        if not session_id or not new_user_id:
+            return jsonify({'error': 'session_id and new_user_id are required'}), 400
+        # Verify session exists
+        existing = load_session_from_db(session_id)
+        if not existing:
+            return jsonify({'error': 'Session not found'}), 404
+        # Update DB
+        conn = sqlite3.connect('coaching_sessions.db')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE sessions SET user_id = ?, updated_at = ? WHERE id = ?', (new_user_id, datetime.now().isoformat(), session_id))
+        conn.commit()
+        conn.close()
+        # Update cache
+        existing['user_id'] = new_user_id
+        existing['status'] = existing.get('status', 'paused')
+        sessions[session_id] = existing
+        return jsonify({'ok': True, 'session_id': session_id, 'user_id': new_user_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recent-sessions', methods=['GET'])
+def recent_sessions():
+	try:
+		limit = int(request.args.get('limit', 10))
+		status = request.args.get('status')
+		conn = sqlite3.connect('coaching_sessions.db')
+		cursor = conn.cursor()
+		if status:
+			cursor.execute('SELECT id, user_id, topic, current_stage, updated_at, status, created_at FROM sessions WHERE status = ? ORDER BY updated_at DESC LIMIT ?', (status, limit))
+		else:
+			cursor.execute('SELECT id, user_id, topic, current_stage, updated_at, status, created_at FROM sessions ORDER BY updated_at DESC LIMIT ?', (limit,))
+		rows = cursor.fetchall()
+		conn.close()
+		items = []
+		for row in rows:
+			items.append({
+				'session_id': row[0],
+				'user_id': row[1],
+				'topic': row[2],
+				'stage': row[3],
+				'updated_at': row[4],
+				'status': row[5],
+				'created_at': row[6]
+			})
+		return jsonify({'sessions': items})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting AI-powered adaptive coaching app...")
